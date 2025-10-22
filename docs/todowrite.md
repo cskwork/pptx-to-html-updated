@@ -32,3 +32,7 @@
 - 2025-10-22: PPT 비디오 도형의 `a:videoFile`/`p14:media` 관계를 해석해 내장 영상은 `assets/`로 복사하고 외부 링크(YouTube 포함)는 iframe/원본 URL로 보존하는 비디오 페이로드 구조를 설계.
 - 2025-10-22: `extract_media`를 내·외부 경로별 MIME 추정, 로깅, 파일명 보존 로직으로 확장하고 `_render_video_element`를 도입해 `<video>`/`<iframe>` 출력이 포스터·다중 소스·폴백 링크까지 포함하도록 구현한 뒤 샘플 PPT 변환을 실행해 동작을 확인.
 - 2025-10-22: 하이퍼링크만 존재하던 슬라이드 4 중앙 이미지를 감지해 외부 MP4를 직접 `<video preload="metadata">`로 임베드하고 포스터를 유지, 재변환 결과에서 즉시 재생되는지 점검.
+- 2025-10-23: 이미지·텍스트 위치 오차 디버깅을 위해 핵심 모듈 목록(`scripts/convert_pptx_to_html_v2.py`, `scripts/shape_geometry.py`, `scripts/smartart_parser.py`, 출력 HTML/CSS)과 분석 계획을 정리하고 조사에 착수.
+- 2025-10-23: `convert_pptx_to_html_v2.py` 좌표 계산, `shape_geometry.py`/`smartart_parser.py` 렌더링 흐름, 샘플 HTML/CSS 번들을 정독하며 절대 좌표·그룹 변환·텍스트 앵커 패턴을 정리.
+- 2025-10-23: 샘플 슬라이드 분석 결과 `p:pic` 이미지의 `<a:srcRect>` 크롭 정보를 `_process_picture`에서 사용하지 않아 HTML 출력 이미지가 원본 비율로 확장되며 주변 텍스트와 위치가 어긋나는 근본 원인을 파악.
+- 2025-10-23: `_process_picture`에서 `srcRect`를 파싱해 `image_crop`/`image_stretch` 메타데이터를 채우고 `generate_element_html`이 항상 `<img>`를 렌더링하도록 보완, 샘플 PPT 재변환으로 `clip-path` 적용 및 레이아웃 정렬을 확인.
