@@ -1431,6 +1431,32 @@ class EnhancedPPTXToHTMLV2:
             'fallback': fallback_link
         }
 
+    def _build_video_payload_from_link(self, url: str, poster: Optional[str]) -> Optional[Dict]:
+        """하이퍼링크 URL 기반 비디오 페이로드 생성"""
+        youtube_embed = self._build_youtube_embed_url(url)
+        if youtube_embed:
+            return {
+                'sources': [],
+                'poster': poster,
+                'iframe': youtube_embed,
+                'fallback': url
+            }
+
+        mime_type = self._guess_mime_type(url, None, 'video/mp4')
+        if mime_type.startswith('video'):
+            return {
+                'sources': [{
+                    'src': url,
+                    'mime': mime_type,
+                    'external': True
+                }],
+                'poster': poster,
+                'iframe': None,
+                'fallback': url
+            }
+
+        return None
+
     def _build_youtube_embed_url(self, url: str) -> Optional[str]:
         """YouTube URL을 iframe용 embed 주소로 변환"""
         try:
@@ -1840,6 +1866,11 @@ class EnhancedPPTXToHTMLV2:
             video_payload = self._extract_video_payload(pic, zip_ref, slide_rels_path, slide_num, poster_path)
             if video_payload:
                 shape_data['video'] = video_payload
+            elif shape_data.get('hyperlink'):
+                link_video = self._build_video_payload_from_link(shape_data['hyperlink'], poster_path)
+                if link_video:
+                    shape_data['video'] = link_video
+                    shape_data['hyperlink'] = None
 
         if transform_chain:
             shape_data['position'] = self._apply_transform_chain(shape_data['position'], transform_chain)
@@ -1855,6 +1886,13 @@ class EnhancedPPTXToHTMLV2:
                     shape_data['image_crop'] = shape_data['fill'].get('crop')
                     shape_data['image_stretch'] = shape_data['fill'].get('stretch')
             shape_data['fill'] = {'type': 'none'}
+
+        if shape_data.get('hyperlink') and not shape_data.get('video'):
+            poster = shape_data.get('image')
+            link_video = self._build_video_payload_from_link(shape_data['hyperlink'], poster)
+            if link_video:
+                shape_data['video'] = link_video
+                shape_data['hyperlink'] = None
 
         self.logger.increment_shape()
         return shape_data
@@ -2027,6 +2065,17 @@ class EnhancedPPTXToHTMLV2:
             element['position']['rotation'] = 0.0
         element['position'] = self._ensure_position_defaults(element['position'])
 
+        hyperlink_target = None
+        c_nv_pr = pic.find('.//p:nvPicPr/p:cNvPr', self.ns)
+        if c_nv_pr is not None:
+            hlink = c_nv_pr.find('.//a:hlinkClick', self.ns)
+            if hlink is not None:
+                rel_id = hlink.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
+                if rel_id:
+                    target, _, _ = self.resolve_relationship(zip_ref, slide_rels_path, rel_id)
+                    if target:
+                        hyperlink_target = target
+
         blip = pic.find('.//a:blip', self.ns)
         if blip is not None:
             embed = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
@@ -2056,27 +2105,15 @@ class EnhancedPPTXToHTMLV2:
         if video_payload:
             element['type'] = 'video'
             element['video'] = video_payload
-        else:
-            c_nv_pr = pic.find('.//p:nvPicPr/p:cNvPr', self.ns)
-            if c_nv_pr is not None:
-                hlink = c_nv_pr.find('.//a:hlinkClick', self.ns)
-                if hlink is not None:
-                    rel_id = hlink.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
-                    if rel_id:
-                        target, _, _ = self.resolve_relationship(zip_ref, slide_rels_path, rel_id)
-                        if target:
-                            youtube_embed = self._build_youtube_embed_url(target)
-                            if youtube_embed:
-                                element['type'] = 'video'
-                                element['video'] = {
-                                    'sources': [],
-                                    'poster': element.get('image'),
-                                    'iframe': youtube_embed,
-                                    'fallback': target
-                                }
-                                element['hyperlink'] = None
-                            else:
-                                element['hyperlink'] = target
+            element['hyperlink'] = None
+        elif hyperlink_target:
+            link_video = self._build_video_payload_from_link(hyperlink_target, poster_path)
+            if link_video:
+                element['type'] = 'video'
+                element['video'] = link_video
+                element['hyperlink'] = None
+            else:
+                element['hyperlink'] = hyperlink_target
 
         if transform_chain:
             element['position'] = self._apply_transform_chain(element['position'], transform_chain)
@@ -3601,7 +3638,7 @@ body {
         sources = video_info.get('sources') or []
         poster = video_info.get('poster')
 
-        attr_parts = ['controls preload="metadata"', 'style="width: 100%; height: 100%; object-fit: contain;"']
+        attr_parts = ['controls', 'preload="metadata"', 'style="width: 100%; height: 100%; object-fit: contain;"']
         primary_source = None
         for source in sources:
             src_value = source.get('src')

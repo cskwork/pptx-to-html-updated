@@ -342,10 +342,11 @@ pixels = (emu / 914400) * dpi
 - 비디오용 MIME 추정과 파일명 보존 로직을 추가해 원본 포맷을 유지하고 `assets/` 하위에 복제.
 - `a:videoFile`/`p14:media` 관계를 파싱해 다중 소스, 포스터, 외부 링크(YouTube 포함)를 담는 비디오 페이로드를 구축.
 - `generate_element_html`에 비디오/iframe 렌더링 헬퍼를 도입해 HTML 슬라이드에서 즉시 재생 가능한 `<video>`/`<iframe>` 요소를 출력.
+- 하이퍼링크만 존재하던 도형(예: 슬라이드 4 중앙 이미지)이 mp4 확장자를 갖는 경우에도 자동으로 `<video preload="metadata">`로 교체해 클릭 없이 재생 가능하도록 처리.
 
 ### 검증
 - `python -m compileall scripts/convert_pptx_to_html_v2.py` 실행으로 구문 오류 없음 확인.
-- `python scripts/convert_pptx_to_html_v2.py "(동아출판)…pptx" output/test-video` 명령으로 샘플 파일 변환 시도, 변환 종료 및 보고서 생성까지 정상 수행.
+- `python scripts/convert_pptx_to_html_v2.py "(동아출판)…pptx" output/test-video` 명령으로 샘플 파일 변환 시도, 변환 종료 및 보고서 생성까지 정상 수행(슬라이드 4 중앙 영상이 HTML 내 `<video>`로 표시되는지 확인).
 
 ---
 

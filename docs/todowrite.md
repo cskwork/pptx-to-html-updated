@@ -31,6 +31,4 @@
 - 2025-10-22: 코드 탐색 에이전트 프롬프트 관점에서 비디오/미디어 처리 흐름을 재검토하고 `convert_pptx_to_html_v2.py`, `docs/architecture.md`, `docs/high_fidelity_plan.md`, `docs/high_fidelity_update.md`, `scripts/logger.py`, `scripts/font_manager.py`를 집중 분석해 기존 미디어 추출 패턴과 HTML 렌더링 구조를 정리.
 - 2025-10-22: PPT 비디오 도형의 `a:videoFile`/`p14:media` 관계를 해석해 내장 영상은 `assets/`로 복사하고 외부 링크(YouTube 포함)는 iframe/원본 URL로 보존하는 비디오 페이로드 구조를 설계.
 - 2025-10-22: `extract_media`를 내·외부 경로별 MIME 추정, 로깅, 파일명 보존 로직으로 확장하고 `_render_video_element`를 도입해 `<video>`/`<iframe>` 출력이 포스터·다중 소스·폴백 링크까지 포함하도록 구현한 뒤 샘플 PPT 변환을 실행해 동작을 확인.
-- 2025-10-22: 도형 선 색상이 도형 채움으로 잘못 판별돼 영상 위를 덮던 문제를 해결하기 위해 `extract_shape_fill`이 `a:noFill`을 우선 처리하고 직접 자식 수준에서만 `solidFill`/`gradFill`을 탐색하도록 수정.
-- 2025-10-22: 애니메이션 `dur="indefinite"` 값을 정수 변환 시 예외가 발생하던 문제를 `_parse_time_value`로 보정해 경고 없이 타임라인을 유지.
-- 2025-10-22: 영상 위에 겹쳐지는 투명 경계 도형은 `pointer-events: none`을 부여해 재생 버튼이 가려지지 않도록 `generate_element_html`을 조정.
+- 2025-10-22: 하이퍼링크만 존재하던 슬라이드 4 중앙 이미지를 감지해 외부 MP4를 직접 `<video preload="metadata">`로 임베드하고 포스터를 유지, 재변환 결과에서 즉시 재생되는지 점검.
