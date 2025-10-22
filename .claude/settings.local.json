@@ -1,11 +1,11 @@
 {
-  "enableAllProjectMcpServers": true,
-  "enabledMcpjsonServers": [
-    "memory"
-  ],
   "permissions": {
     "allow": [
       "Bash(git add:*)"
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "memory"
+  ]
 }

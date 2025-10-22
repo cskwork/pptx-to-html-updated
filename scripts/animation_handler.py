@@ -104,10 +104,10 @@ class AnimationHandler:
                 return None
 
             # 지속 시간 (밀리초)
-            duration = int(c_tn.get('dur', '1000'))
+            duration = self._parse_time_value(c_tn.get('dur'), default=1000)
 
             # 딜레이
-            delay = int(c_tn.get('delay', '0'))
+            delay = self._parse_time_value(c_tn.get('delay'), default=0)
 
             # 애니메이션 효과 찾기
             anim_effect = node.find('.//p:animEffect', self.ns)
@@ -380,6 +380,19 @@ class AnimationHandler:
             return self._parse_inner_shadow(inner_shadow)
 
         return None
+
+    @staticmethod
+    def _parse_time_value(value: Optional[str], default: int) -> int:
+        """PowerPoint 시간 값을 정수 밀리초로 변환"""
+        if value is None:
+            return default
+        value = value.strip().lower()
+        if value in {'indefinite', 'media', 'auto'}:
+            return 0
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
 
     def _parse_outer_shadow(self, shadow_elem: ET.Element) -> str:
         """

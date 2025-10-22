@@ -315,6 +315,40 @@ pixels = (emu / 914400) * dpi
 
 ---
 
+## 슬라이드 전환 재현
+
+### 구현 요약
+- `scripts/transition_handler.py`를 추가해 `p:transition` 노드를 파싱하고 효과·방향·속도·자동 진행 설정을 통합 모델(`TransitionConfig`)로 직렬화.
+- 전환이 정의되지 않은 슬라이드는 자동으로 `cut` 처리하여 PowerPoint의 무전환 슬라이드가 웹에서도 즉시 전환되도록 보장.
+- `process_slide`가 전환 메타데이터를 슬라이드 레코드에 저장해 번들 생성 시 HTML/CSS/JS에서 활용.
+- `generate_bundle`에서 전환용 CSS 키프레임과 JS 런타임을 생성해 push/wipe/split/cover/zoom/3D 등 기본 전환을 재현하고, 방향·마스크·회전 값을 CSS 커스텀 프로퍼티로 전달.
+- JS 슬라이드 컨트롤러가 `throughBlack` 옵션과 `advTm` 자동 진행까지 처리하며, 역방향 이동 시 방향을 반전시켜 PowerPoint와 동일한 체감을 제공.
+- YouTube 하이퍼링크가 걸린 그림 도형을 iframe 기반 비디오로 변환해 슬라이드에서 바로 재생되도록 `_process_picture`와 비디오 렌더러를 연계.
+- HTML5 `<video>` 태그에 `preload="metadata"`를 적용하고 fallback 링크를 항상 노출해 내장 MP4 미리보기/재생이 안정적으로 동작하도록 렌더링 로직을 보강.
+- `extract_shape_fill`이 선 색상(`a:ln/a:solidFill`)을 채우기로 오인하지 않도록 `a:noFill`을 우선 반영하고 직계 자식만 확인해 영상 위 회색 오버레이가 생기던 문제를 제거.
+- 애니메이션 노드에 `dur="indefinite"`가 포함될 때 경고가 발생하던 이슈를 `_parse_time_value`로 보정해 타임라인 파싱이 안정화되도록 개선.
+- 투명 경계 도형이 영상 클릭을 가로막지 않도록 `pointer-events: none` 처리를 추가해 YouTube/MP4가 정상적으로 재생되게 수정.
+
+### 검증
+- `python -m compileall scripts/transition_handler.py scripts/convert_pptx_to_html_v2.py`로 구문 검사를 통과.
+- 샘플 PPT(`(동아출판)…pptx`)를 변환 후 브라우저에서 키보드/버튼 전환, 자동 진행 타이머, 도형 애니메이션과의 연동을 수동 확인.
+
+---
+
+## 2025-10-22 - 비디오 임베딩 개선
+
+### 구현 요약
+- `resolve_relationship`가 `TargetMode`를 반환하도록 확장하고 `extract_media`가 내장/외부 비디오를 구분해 자산 폴더 저장 또는 원본 URL 유지.
+- 비디오용 MIME 추정과 파일명 보존 로직을 추가해 원본 포맷을 유지하고 `assets/` 하위에 복제.
+- `a:videoFile`/`p14:media` 관계를 파싱해 다중 소스, 포스터, 외부 링크(YouTube 포함)를 담는 비디오 페이로드를 구축.
+- `generate_element_html`에 비디오/iframe 렌더링 헬퍼를 도입해 HTML 슬라이드에서 즉시 재생 가능한 `<video>`/`<iframe>` 요소를 출력.
+
+### 검증
+- `python -m compileall scripts/convert_pptx_to_html_v2.py` 실행으로 구문 오류 없음 확인.
+- `python scripts/convert_pptx_to_html_v2.py "(동아출판)…pptx" output/test-video` 명령으로 샘플 파일 변환 시도, 변환 종료 및 보고서 생성까지 정상 수행.
+
+---
+
 ## 다음 단계
 
 ### 즉시 실행

@@ -25,3 +25,12 @@
 - 2025-10-22: 그룹 변환 적용 순서를 내부→외부로 역전시켜 부모 좌표계 스케일/오프셋이 정확히 누적되도록 수정, 슬라이드 3 회전 요소 좌표가 PPT 범위(<1920px) 안에 안정화됨을 확인.
 - 2025-10-22: `ConversionLogger.warning`에 예외 메시지 병합을 추가해 애니메이션 파싱 경고 발생 시 TypeError로 슬라이드 처리가 중단되던 문제를 해결하고 8장 슬라이드를 모두 추출함.
 - 2025-10-22: 마스터·레이아웃 spTree에서 플레이스홀더가 아닌 템플릿 요소를 추출해 슬라이드 HTML에 병합, PPT 템플릿 로고/머리글이 그대로 반영되도록 구현.
+- 2025-10-22: 슬라이드 전환 애니메이션 요구사항 분석 착수, 생성 파이프라인 핵심 파일(`convert_pptx_to_html_v2.py`, `animation_handler.py`, 아키텍처 문서) 검토로 현 구조 및 애니메이션 처리 흐름 정리.
+- 2025-10-22: 새 `transition_handler.py`로 PPT `p:transition`을 파싱하고 슬라이드 메타데이터에 저장, 번들 생성 시 CSS 키프레임/JS 런타임을 추가해 방향·속도·through black·자동 진행까지 포함한 전환 효과를 재현.
+- 2025-10-22: 전환 미정의 슬라이드를 `cut`으로 처리하고 `prstTrans`/속성 기반 효과를 정규화해 PPT와 동일한 전환/무전환 패턴이 재현되도록 `transition_handler.py`, `convert_pptx_to_html_v2.py`를 보강.
+- 2025-10-22: 코드 탐색 에이전트 프롬프트 관점에서 비디오/미디어 처리 흐름을 재검토하고 `convert_pptx_to_html_v2.py`, `docs/architecture.md`, `docs/high_fidelity_plan.md`, `docs/high_fidelity_update.md`, `scripts/logger.py`, `scripts/font_manager.py`를 집중 분석해 기존 미디어 추출 패턴과 HTML 렌더링 구조를 정리.
+- 2025-10-22: PPT 비디오 도형의 `a:videoFile`/`p14:media` 관계를 해석해 내장 영상은 `assets/`로 복사하고 외부 링크(YouTube 포함)는 iframe/원본 URL로 보존하는 비디오 페이로드 구조를 설계.
+- 2025-10-22: `extract_media`를 내·외부 경로별 MIME 추정, 로깅, 파일명 보존 로직으로 확장하고 `_render_video_element`를 도입해 `<video>`/`<iframe>` 출력이 포스터·다중 소스·폴백 링크까지 포함하도록 구현한 뒤 샘플 PPT 변환을 실행해 동작을 확인.
+- 2025-10-22: 도형 선 색상이 도형 채움으로 잘못 판별돼 영상 위를 덮던 문제를 해결하기 위해 `extract_shape_fill`이 `a:noFill`을 우선 처리하고 직접 자식 수준에서만 `solidFill`/`gradFill`을 탐색하도록 수정.
+- 2025-10-22: 애니메이션 `dur="indefinite"` 값을 정수 변환 시 예외가 발생하던 문제를 `_parse_time_value`로 보정해 경고 없이 타임라인을 유지.
+- 2025-10-22: 영상 위에 겹쳐지는 투명 경계 도형은 `pointer-events: none`을 부여해 재생 버튼이 가려지지 않도록 `generate_element_html`을 조정.

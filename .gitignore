@@ -21,6 +21,10 @@ wheels/
 *.egg
 output/
 *.pptx
+*.png
+*.gif
+*.jpeg
+tmp_output_debug/
 
 
 # Virtual Environment

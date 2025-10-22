@@ -14,13 +14,15 @@ Phase 2 Features:
 - Comprehensive logging and error handling
 """
 
+import html
+import json
+import math
+import mimetypes
 import sys
 import zipfile
 from pathlib import Path
-import json
-import html
-import math
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional, Tuple
+from urllib.parse import parse_qs, urlparse
 import xml.etree.ElementTree as ET
 
 # 모듈 임포트
@@ -30,6 +32,7 @@ from shape_geometry import ShapeGeometryConverter
 from smartart_parser import SmartArtParser
 from animation_handler import AnimationHandler
 from font_manager import FontManager
+from transition_handler import TransitionHandler
 
 
 class EnhancedPPTXToHTMLV2:
@@ -79,6 +82,7 @@ class EnhancedPPTXToHTMLV2:
         self.master_background_cache: Dict[str, Optional[Dict]] = {}
         self.layout_placeholder_cache: Dict[str, Dict[Tuple[str, str, str, str], Dict]] = {}
         self.master_placeholder_cache: Dict[str, Dict[Tuple[str, str, str, str], Dict]] = {}
+        self.transition_handler = TransitionHandler(self.ns, self.logger)
 
     # === 유틸리티 메서드 ===
 
@@ -504,13 +508,13 @@ class EnhancedPPTXToHTMLV2:
         """관계 ID를 타겟 경로로 해결"""
         rels_tree = self.get_relationships(zip_ref, rels_path)
         if rels_tree is None:
-            return None, None
+            return None, None, None
 
         for rel in rels_tree.findall('.//rel:Relationship', self.ns):
             if rel.get('Id') == rel_id:
-                return rel.get('Target'), rel.get('Type')
+                return rel.get('Target'), rel.get('Type'), rel.get('TargetMode')
 
-        return None, None
+        return None, None, None
 
     # === 도형 추출 (기존 로직 + Phase 2 개선사항) ===
 
@@ -566,13 +570,16 @@ class EnhancedPPTXToHTMLV2:
         if sp_pr is None:
             return fill
 
-        solid = sp_pr.find('.//a:solidFill', self.ns)
+        if sp_pr.find('a:noFill', self.ns) is not None:
+            return fill
+
+        solid = sp_pr.find('a:solidFill', self.ns)
         if solid is not None:
             fill['type'] = 'solid'
             fill['color'] = self.color_to_hex(solid)
             return fill
 
-        blip_fill = sp_pr.find('.//a:blipFill', self.ns)
+        blip_fill = sp_pr.find('a:blipFill', self.ns)
         if blip_fill is not None:
             blip = blip_fill.find('a:blip', self.ns)
             if blip is not None:
@@ -594,7 +601,7 @@ class EnhancedPPTXToHTMLV2:
                     'stretch': stretch
                 }
 
-        grad = sp_pr.find('.//a:gradFill', self.ns)
+        grad = sp_pr.find('a:gradFill', self.ns)
         if grad is not None:
             fill['type'] = 'gradient'
             stops = []
@@ -861,7 +868,7 @@ class EnhancedPPTXToHTMLV2:
                 if hlink is not None:
                     rel_id = hlink.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
                     if rel_id:
-                        target, _ = self.resolve_relationship(zip_ref, slide_rels_path, rel_id)
+                        target, _, _ = self.resolve_relationship(zip_ref, slide_rels_path, rel_id)
                         if target:
                             hyperlink = target
 
@@ -1247,48 +1254,214 @@ class EnhancedPPTXToHTMLV2:
     # === 미디어 추출 (이미지, 비디오, 오디오) - DPI 향상 ===
 
     def extract_media(self, zip_ref, slide_rels_path, rel_id, slide_num, media_type='image'):
-        """미디어 파일 추출 (DPI 향상)"""
+        """미디어 파일 추출 (내장 및 외부 링크 지원)"""
         try:
-            target, rel_type = self.resolve_relationship(zip_ref, slide_rels_path, rel_id)
+            target, rel_type, target_mode = self.resolve_relationship(zip_ref, slide_rels_path, rel_id)
             if not target:
                 return None
 
-            is_video = 'video' in rel_type.lower() if rel_type else False
-            is_audio = 'audio' in rel_type.lower() if rel_type else False
+            rel_type_lower = (rel_type or '').lower()
+            mode_lower = (target_mode or '').lower()
+            media_type_hint = (media_type or '').lower()
 
-            media_path = f"ppt/{target.replace('..', '').lstrip('/')}"
+            is_audio = media_type_hint == 'audio' or 'audio' in rel_type_lower
+            is_video = media_type_hint == 'video' or ('video' in rel_type_lower) or ('media' in rel_type_lower and not is_audio)
+            is_external = mode_lower == 'external'
+
+            normalized_target = target
+            if not is_external and normalized_target.lower().startswith(('http://', 'https://')):
+                is_external = True
+
+            media_kind = 'video' if is_video else ('audio' if is_audio else 'image')
+            default_mime = 'video/mp4' if is_video else ('audio/mpeg' if is_audio else 'image/png')
+
+            if is_external:
+                mime_type = self._guess_mime_type(normalized_target, rel_type, default_mime)
+                if is_video:
+                    self.logger.increment_video()
+                elif is_audio:
+                    self.logger.increment_audio()
+                else:
+                    self.logger.increment_image()
+                return {
+                    'path': normalized_target,
+                    'type': media_kind,
+                    'external': True,
+                    'mime_type': mime_type
+                }
+
+            media_path = f"ppt/{normalized_target.replace('..', '').lstrip('/')}"
 
             try:
                 media_data = zip_ref.read(media_path)
-                ext = Path(media_path).suffix
-
-                assets_dir = self.output_dir / "assets"
-                assets_dir.mkdir(exist_ok=True)
-
-                if is_video:
-                    prefix = 'video'
-                    self.logger.increment_video()
-                elif is_audio:
-                    prefix = 'audio'
-                    self.logger.increment_audio()
-                else:
-                    prefix = 'img'
-                    self.logger.increment_image()
-
-                media_filename = f"slide{slide_num}_{prefix}_{rel_id}{ext}"
-                media_file_path = assets_dir / media_filename
-                media_file_path.write_bytes(media_data)
-
-                return {
-                    'path': f"assets/{media_filename}",
-                    'type': 'video' if is_video else ('audio' if is_audio else 'image')
-                }
-            except KeyError as e:
+            except KeyError:
                 self.logger.warning(f"Media file not found: {media_path}", slide_num=slide_num)
                 return None
+
+            mime_type = self._guess_mime_type(media_path, rel_type, default_mime)
+            ext = Path(media_path).suffix
+            if not ext and mime_type:
+                guessed_ext = mimetypes.guess_extension(mime_type.split(';')[0])
+                if guessed_ext:
+                    ext = guessed_ext
+            if not ext:
+                ext = '.mp4' if is_video else ('.mp3' if is_audio else '.png')
+
+            assets_dir = self.output_dir / "assets"
+            assets_dir.mkdir(exist_ok=True)
+
+            if is_video:
+                prefix = 'video'
+                self.logger.increment_video()
+            elif is_audio:
+                prefix = 'audio'
+                self.logger.increment_audio()
+            else:
+                prefix = 'img'
+                self.logger.increment_image()
+
+            media_filename = f"slide{slide_num}_{prefix}_{rel_id}{ext}"
+            media_file_path = assets_dir / media_filename
+            media_file_path.write_bytes(media_data)
+
+            return {
+                'path': f"assets/{media_filename}",
+                'type': media_kind,
+                'external': False,
+                'mime_type': mime_type
+            }
         except Exception as e:
             self.logger.error(f"Failed to extract media", exception=e, slide_num=slide_num)
             return None
+
+    def _guess_mime_type(self, path_or_url: str, rel_type: Optional[str], default: str) -> str:
+        """파일 경로나 URL 기반 MIME 타입 추정"""
+        mime, _ = mimetypes.guess_type(path_or_url)
+        if mime:
+            return mime
+
+        rel_lower = (rel_type or '').lower()
+        if 'video' in rel_lower:
+            return 'video/mp4'
+        if 'audio' in rel_lower:
+            return 'audio/mpeg'
+        if 'image' in rel_lower:
+            return 'image/png'
+
+        return default
+
+    def _extract_video_payload(self, pic_elem, zip_ref, slide_rels_path, slide_num: int,
+                               poster_path: Optional[str]) -> Optional[Dict]:
+        """비디오 도형에서 영상 메타데이터 추출"""
+        nv_pr = pic_elem.find('.//p:nvPicPr/p:nvPr', self.ns)
+        if nv_pr is None:
+            return None
+
+        rel_attr = '{http://schemas.openxmlformats.org/officeDocument/2006/relationships}'
+        embed_ids = set()
+        link_ids = set()
+
+        video_file = nv_pr.find('a:videoFile', self.ns)
+        if video_file is not None:
+            link_rel = video_file.get(f'{rel_attr}link')
+            if link_rel:
+                link_ids.add(link_rel)
+
+        for media_elem in nv_pr.findall('.//p14:media', self.ns):
+            embed_rel = media_elem.get(f'{rel_attr}embed')
+            if embed_rel:
+                embed_ids.add(embed_rel)
+            link_rel = media_elem.get(f'{rel_attr}link')
+            if link_rel:
+                link_ids.add(link_rel)
+
+        if not embed_ids and not link_ids:
+            return None
+
+        sources: List[Dict[str, Optional[str]]] = []
+        iframe_src: Optional[str] = None
+        fallback_link: Optional[str] = None
+        seen_paths: set = set()
+
+        for rel_id in embed_ids:
+            media = self.extract_media(zip_ref, slide_rels_path, rel_id, slide_num, media_type='video')
+            if not media:
+                continue
+            src = media.get('path')
+            if not src or src in seen_paths:
+                continue
+            seen_paths.add(src)
+            sources.append({
+                'src': src,
+                'mime': media.get('mime_type') or 'video/mp4',
+                'external': media.get('external', False)
+            })
+
+        for rel_id in link_ids:
+            media = self.extract_media(zip_ref, slide_rels_path, rel_id, slide_num, media_type='video')
+            if not media:
+                continue
+            link_src = media.get('path')
+            if not link_src:
+                continue
+            if media.get('external'):
+                youtube_embed = self._build_youtube_embed_url(link_src)
+                if youtube_embed:
+                    iframe_src = youtube_embed
+                    fallback_link = link_src
+                    continue
+            if link_src in seen_paths:
+                continue
+            seen_paths.add(link_src)
+            sources.append({
+                'src': link_src,
+                'mime': media.get('mime_type') or 'video/mp4',
+                'external': media.get('external', False)
+            })
+            if media.get('external'):
+                fallback_link = link_src
+
+        if not sources and not iframe_src:
+            return None
+
+        return {
+            'sources': sources,
+            'poster': poster_path,
+            'iframe': iframe_src,
+            'fallback': fallback_link
+        }
+
+    def _build_youtube_embed_url(self, url: str) -> Optional[str]:
+        """YouTube URL을 iframe용 embed 주소로 변환"""
+        try:
+            parsed = urlparse(url)
+        except Exception:
+            return None
+
+        host = parsed.netloc.lower()
+        path = parsed.path or ''
+
+        video_id: Optional[str] = None
+
+        if 'youtube.com' in host:
+            if path.startswith('/watch'):
+                params = parse_qs(parsed.query)
+                video_id = params.get('v', [None])[0]
+            elif path.startswith('/embed/'):
+                parts = [p for p in path.split('/') if p]
+                if len(parts) >= 2:
+                    video_id = parts[1]
+            elif path.startswith('/shorts/'):
+                parts = [p for p in path.split('/') if p]
+                if len(parts) >= 2:
+                    video_id = parts[1]
+        elif 'youtu.be' in host:
+            video_id = path.lstrip('/')
+
+        if not video_id:
+            return None
+
+        return f"https://www.youtube.com/embed/{video_id}"
 
     # === 테이블 추출 (기존 코드 유지) ===
 
@@ -1630,13 +1803,14 @@ class EnhancedPPTXToHTMLV2:
             if hlink is not None:
                 rel_id = hlink.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
                 if rel_id:
-                    target, _ = self.resolve_relationship(zip_ref, slide_rels_path, rel_id)
+                    target, _, _ = self.resolve_relationship(zip_ref, slide_rels_path, rel_id)
                     if target:
                             shape_data['hyperlink'] = target
 
         # 이미지/비디오/오디오 확인
         pic = shape.find('.//pic:pic', self.ns)
         if pic is not None:
+            poster_path: Optional[str] = None
             blip = pic.find('.//a:blip', self.ns)
             if blip is not None:
                 embed = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
@@ -1644,11 +1818,28 @@ class EnhancedPPTXToHTMLV2:
                     media = self.extract_media(zip_ref, slide_rels_path, embed, slide_num)
                     if media:
                         if media['type'] == 'video':
-                            shape_data['video'] = media['path']
+                            shape_data['video'] = {
+                                'sources': [{
+                                    'src': media['path'],
+                                    'mime': media.get('mime_type') or 'video/mp4',
+                                    'external': media.get('external', False)
+                                }],
+                                'poster': None,
+                                'iframe': None,
+                                'fallback': media['path'] if media.get('external') else None
+                            }
                         elif media['type'] == 'audio':
                             shape_data['audio'] = media['path']
                         else:
                             shape_data['image'] = media['path']
+                            poster_path = media['path']
+
+            if poster_path is None:
+                poster_path = shape_data.get('image')
+
+            video_payload = self._extract_video_payload(pic, zip_ref, slide_rels_path, slide_num, poster_path)
+            if video_payload:
+                shape_data['video'] = video_payload
 
         if transform_chain:
             shape_data['position'] = self._apply_transform_chain(shape_data['position'], transform_chain)
@@ -1688,6 +1879,7 @@ class EnhancedPPTXToHTMLV2:
                 shape_converter = ShapeGeometryConverter(self.ns, self.logger)
                 smartart_parser = SmartArtParser(zip_ref, self.ns, self.logger)
                 animation_handler = AnimationHandler(self.ns, self.logger)
+                transition_handler = self.transition_handler
                 font_manager = FontManager(zip_ref, self.output_dir, self.logger)
                 self._load_theme(zip_ref)
 
@@ -1707,7 +1899,8 @@ class EnhancedPPTXToHTMLV2:
                         self.logger.info(f"Processing slide {idx}...")
                         try:
                             self.process_slide(zip_ref, slide_id, idx, chart_extractor,
-                                              shape_converter, smartart_parser, animation_handler)
+                                               shape_converter, smartart_parser, animation_handler,
+                                               transition_handler)
                             self.logger.increment_slide()
                         except Exception as e:
                             self.logger.error(f"Failed to process slide {idx}", exception=e, slide_num=idx)
@@ -1825,6 +2018,7 @@ class EnhancedPPTXToHTMLV2:
             'image': None,
             'video': None,
             'audio': None,
+            'hyperlink': None,
             'z_index': self._next_z_index()
         }
 
@@ -1841,12 +2035,48 @@ class EnhancedPPTXToHTMLV2:
                 if media:
                     if media['type'] == 'video':
                         element['type'] = 'video'
-                        element['video'] = media['path']
+                        element['video'] = {
+                            'sources': [{
+                                'src': media['path'],
+                                'mime': media.get('mime_type') or 'video/mp4',
+                                'external': media.get('external', False)
+                            }],
+                            'poster': None,
+                            'iframe': None,
+                            'fallback': media['path'] if media.get('external') else None
+                        }
                     elif media['type'] == 'audio':
                         element['type'] = 'audio'
                         element['audio'] = media['path']
                     else:
                         element['image'] = media['path']
+
+        poster_path = element.get('image')
+        video_payload = self._extract_video_payload(pic, zip_ref, slide_rels_path, idx, poster_path)
+        if video_payload:
+            element['type'] = 'video'
+            element['video'] = video_payload
+        else:
+            c_nv_pr = pic.find('.//p:nvPicPr/p:cNvPr', self.ns)
+            if c_nv_pr is not None:
+                hlink = c_nv_pr.find('.//a:hlinkClick', self.ns)
+                if hlink is not None:
+                    rel_id = hlink.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
+                    if rel_id:
+                        target, _, _ = self.resolve_relationship(zip_ref, slide_rels_path, rel_id)
+                        if target:
+                            youtube_embed = self._build_youtube_embed_url(target)
+                            if youtube_embed:
+                                element['type'] = 'video'
+                                element['video'] = {
+                                    'sources': [],
+                                    'poster': element.get('image'),
+                                    'iframe': youtube_embed,
+                                    'fallback': target
+                                }
+                                element['hyperlink'] = None
+                            else:
+                                element['hyperlink'] = target
 
         if transform_chain:
             element['position'] = self._apply_transform_chain(element['position'], transform_chain)
@@ -1995,7 +2225,8 @@ class EnhancedPPTXToHTMLV2:
                                     animation_handler, elements, transform_chain, skip_placeholders=skip_placeholders)
 
     def process_slide(self, zip_ref, slide_id, idx, chart_extractor,
-                      shape_converter, smartart_parser, animation_handler):
+                      shape_converter, smartart_parser, animation_handler,
+                      transition_handler):
         """단일 슬라이드 처리"""
         slide_rel_id = slide_id.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
 
@@ -2024,6 +2255,7 @@ class EnhancedPPTXToHTMLV2:
 
         # Phase 2: 애니메이션 추출
         animations = animation_handler.extract_slide_animations(slide_xml)
+        slide_transition = transition_handler.extract_transition(slide_xml)
 
         placeholder_context = self._build_placeholder_context(zip_ref, slide_rels_path, layout_path=layout_path)
 
@@ -2074,7 +2306,8 @@ class EnhancedPPTXToHTMLV2:
             'number': idx,
             'background': background,
             'elements': elements,
-            'animations': animations
+            'animations': animations,
+            'transition': slide_transition
         })
 
         self.logger.debug(f"Slide {idx}: {len(elements)} element(s) extracted")
@@ -2365,7 +2598,6 @@ class EnhancedPPTXToHTMLV2:
         total_slides = len(self.slides_data)
 
         smartart_parser = SmartArtParser(None, self.ns, self.logger)
-        shape_converter = ShapeGeometryConverter(self.ns, self.logger)
 
         for index, slide in enumerate(self.slides_data, start=1):
             bg_style = self._build_background_style(slide['background'])
@@ -2388,76 +2620,88 @@ class EnhancedPPTXToHTMLV2:
                 else:
                     elements_html.append(self.generate_element_html(element, slide_width, slide_height))
 
-            slides_markup.append(
+            transition_meta = slide.get('transition')
+            data_attrs = ''
+            if transition_meta:
+                effect_attr = html.escape(transition_meta.effect or '', quote=True)
+                direction_attr = html.escape(transition_meta.direction or '', quote=True)
+                data_attrs = (
+                    f' data-transition-effect="{effect_attr}"'
+                    f' data-transition-direction="{direction_attr}"'
+                )
+
+            slide_markup = (
                 f'<div class="slide{" active" if index == 1 else ""}" '
-                f'data-slide="{index}" style="{bg_style}">'
+                f'data-slide="{index}"{data_attrs} style="{bg_style}">'
                 f'{"".join(elements_html)}'
                 f'<div class="slide-number">{index} / {total_slides}</div>'
                 '</div>'
             )
+            slides_markup.append(slide_markup)
 
         animation_css = animation_handler.generate_css_animations()
+        transition_css = self.transition_handler.generate_transition_css()
+        transition_data = self.transition_handler.serialize_transitions(self.slides_data)
+        transition_json = json.dumps(transition_data, ensure_ascii=False)
 
-        base_css = f"""
-:root {{
-    --slide-width: {slide_width:.2f}px;
-    --slide-height: {slide_height:.2f}px;
-}}
+        css_template = """:root {
+    --slide-width: __SLIDE_WIDTH__px;
+    --slide-height: __SLIDE_HEIGHT__px;
+}
 
-* {{
+* {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
-}}
+}
 
-body {{
+body {
     font-family: 'Arial', sans-serif;
     background-color: #1a1a1a;
     color: #111;
     width: 100vw;
     height: 100vh;
     overflow: hidden;
-}}
+}
 
-#presentation {{
+#presentation {
     position: relative;
     width: 100vw;
     height: 100vh;
     display: flex;
     flex-direction: column;
-}}
+}
 
-.stage-wrapper {{
+.stage-wrapper {
     flex: 1 1 auto;
     position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 24px;
-}}
+}
 
-.slide-stage {{
+.slide-stage {
     width: var(--slide-width);
     height: var(--slide-height);
     position: relative;
     transform-origin: top left;
-}}
+    overflow: hidden;
+    background-color: #000;
+}
 
-.slide {{
+.slide {
     position: absolute;
-    top: 0;
-    left: 0;
+    inset: 0;
     width: var(--slide-width);
     height: var(--slide-height);
     overflow: hidden;
-    display: none;
-}}
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+}
 
-.slide.active {{
-    display: block;
-}}
-
-.slide-number {{
+.slide-number {
     position: absolute;
     right: 24px;
     bottom: 16px;
@@ -2467,53 +2711,55 @@ body {{
     border-radius: 12px;
     font-size: 13px;
     backdrop-filter: blur(6px);
-}}
+    z-index: 25;
+}
 
-.ppt-element {{
+.ppt-element {
     position: absolute;
     overflow: visible;
-}}
+}
 
-.ppt-link {{
+.ppt-link {
     text-decoration: none;
     color: inherit;
     display: block;
-}}
+}
 
-.ppt-table {{
+.ppt-table {
     background-color: transparent;
-}}
+}
 
-.ppt-table td, .ppt-table th {{
+.ppt-table td, .ppt-table th {
     white-space: pre-wrap;
-}}
+}
 
-.chart-element {{
+.chart-element {
     pointer-events: auto;
-}}
+}
 
-.chart-element canvas {{
+.chart-element canvas {
     width: 100%;
     height: 100%;
-}}
+}
 
-.ppt-paragraph {{
+.ppt-paragraph {
     color: inherit;
-}}
+}
 
-.ppt-bullet {{
+.ppt-bullet {
     display: inline-block;
     line-height: 1;
-}}
+}
 
-.controls {{
+.controls {
     display: flex;
     gap: 16px;
     justify-content: center;
     padding: 12px 0 24px;
-}}
+    z-index: 30;
+}
 
-.controls button {{
+.controls button {
     background: rgba(255, 255, 255, 0.18);
     border: 1px solid rgba(255, 255, 255, 0.3);
     color: #ffffff;
@@ -2523,18 +2769,18 @@ body {{
     border-radius: 10px;
     transition: all 0.25s ease;
     backdrop-filter: blur(8px);
-}}
+}
 
-.controls button:hover {{
+.controls button:hover {
     background: rgba(255, 255, 255, 0.28);
-}}
+}
 
-.controls button:disabled {{
+.controls button:disabled {
     opacity: 0.35;
     cursor: not-allowed;
-}}
+}
 
-.progress-bar {{
+.progress-bar {
     position: absolute;
     top: 0;
     left: 0;
@@ -2542,110 +2788,610 @@ body {{
     background: #4CAF50;
     width: 0;
     transition: width 0.3s ease;
-    z-index: 5;
-}}
+    z-index: 40;
+}
 """.strip()
+
+        base_css = (css_template
+                    .replace('__SLIDE_WIDTH__', f"{slide_width:.2f}")
+                    .replace('__SLIDE_HEIGHT__', f"{slide_height:.2f}"))
 
         css_sections: List[str] = []
         if font_faces:
             css_sections.append('\n'.join(font_faces))
+        if transition_css:
+            css_sections.append(transition_css)
         if base_css:
             css_sections.append(base_css)
         if animation_css:
             css_sections.append(animation_css)
         css_content = '\n\n'.join(css_sections)
 
-        base_js = f"""
-(function() {{
-    const slideWidth = {slide_width:.2f};
-    const slideHeight = {slide_height:.2f};
-    let currentSlide = 0;
+        js_template = """(function() {
+    const slideWidth = __SLIDE_WIDTH__;
+    const slideHeight = __SLIDE_HEIGHT__;
     const slides = Array.from(document.querySelectorAll('.slide'));
     const stage = document.querySelector('.slide-stage');
     const progress = document.getElementById('progress');
     const totalSlides = slides.length;
     const prevBtn = document.getElementById('prev');
     const nextBtn = document.getElementById('next');
+    const blackout = document.getElementById('transitionBlackout');
+    const slideTransitions = __TRANSITION_DATA__;
+    const defaultTransition = {
+        effect: 'cut',
+        duration: 0,
+        delay: 0,
+        direction: null,
+        orientation: null,
+        throughBlack: false,
+        spokes: null,
+        shape: null,
+        speed: null,
+        advanceOnClick: true,
+        advanceAfter: null
+    };
+    const cssVarKeys = [
+        '--ppt-transition-duration',
+        '--ppt-transition-delay',
+        '--ppt-translate-in-x',
+        '--ppt-translate-in-y',
+        '--ppt-translate-out-x',
+        '--ppt-translate-out-y',
+        '--ppt-scale-in',
+        '--ppt-scale-out',
+        '--ppt-rotate-in',
+        '--ppt-rotate-out',
+        '--ppt-mask-start',
+        '--ppt-mask-angle',
+        '--ppt-mask-shape',
+        '--ppt-clip-inset-top',
+        '--ppt-clip-inset-right',
+        '--ppt-clip-inset-bottom',
+        '--ppt-clip-inset-left',
+        '--ppt-wheel-spokes',
+        '--ppt-clip-shape'
+    ];
+    let currentSlide = 0;
+    let isTransitioning = false;
+    let autoAdvanceTimer = null;
 
-    function applyScale() {{
-        if (!stage || !stage.parentElement) {{
+    function applyScale() {
+        if (!stage || !stage.parentElement) {
             return;
-        }}
+        }
         const wrapper = stage.parentElement;
         const scaleX = wrapper.clientWidth / slideWidth;
         const scaleY = wrapper.clientHeight / slideHeight;
         const scale = Math.min(scaleX, scaleY);
-        stage.style.transform = `scale(${{scale}})`;
-    }}
+        stage.style.transform = `scale(${scale})`;
+    }
 
-    function updateControls() {{
-        if (prevBtn) prevBtn.disabled = currentSlide === 0;
-        if (nextBtn) nextBtn.disabled = currentSlide === totalSlides - 1;
-        if (progress) {{
-            progress.style.width = `${{((currentSlide + 1) / totalSlides) * 100}}%`;
-        }}
-    }}
+    function mergeTransition(index) {
+        const raw = slideTransitions[index] || {};
+        const config = Object.assign({}, defaultTransition);
+        Object.keys(raw).forEach(key => {
+            if (raw[key] !== undefined && raw[key] !== null) {
+                config[key] = raw[key];
+            }
+        });
+        if (!config.spokes && config.effect === 'wheel') {
+            config.spokes = 6;
+        }
+        return config;
+    }
 
-    function initializeCharts() {{
-        if (typeof Chart === 'undefined') {{
+    function invertDirection(direction) {
+        switch (direction) {
+            case 'l': return 'r';
+            case 'r': return 'l';
+            case 'u': return 'd';
+            case 'd': return 'u';
+            case 'tl': return 'br';
+            case 'tr': return 'bl';
+            case 'bl': return 'tr';
+            case 'br': return 'tl';
+            default: return direction;
+        }
+    }
+
+    function directionVector(direction) {
+        switch (direction) {
+            case 'l':
+                return { inX: '-100%', inY: '0%', outX: '100%', outY: '0%', maskAngle: '90deg', maskStart: '-125%', clip: { top: '0%', right: '0%', bottom: '0%', left: '100%' }, rotate: '90deg' };
+            case 'r':
+                return { inX: '100%', inY: '0%', outX: '-100%', outY: '0%', maskAngle: '270deg', maskStart: '125%', clip: { top: '0%', right: '100%', bottom: '0%', left: '0%' }, rotate: '-90deg' };
+            case 'u':
+                return { inX: '0%', inY: '-100%', outX: '0%', outY: '100%', maskAngle: '0deg', maskStart: '-125%', clip: { top: '100%', right: '0%', bottom: '0%', left: '0%' }, rotate: '90deg' };
+            case 'd':
+                return { inX: '0%', inY: '100%', outX: '0%', outY: '-100%', maskAngle: '180deg', maskStart: '125%', clip: { top: '0%', right: '0%', bottom: '100%', left: '0%' }, rotate: '-90deg' };
+            case 'tl':
+                return { inX: '-100%', inY: '-100%', outX: '100%', outY: '100%', maskAngle: '45deg', maskStart: '-125%', clip: { top: '100%', right: '0%', bottom: '0%', left: '100%' }, rotate: '90deg' };
+            case 'tr':
+                return { inX: '100%', inY: '-100%', outX: '-100%', outY: '100%', maskAngle: '315deg', maskStart: '125%', clip: { top: '100%', right: '100%', bottom: '0%', left: '0%' }, rotate: '-90deg' };
+            case 'bl':
+                return { inX: '-100%', inY: '100%', outX: '100%', outY: '-100%', maskAngle: '135deg', maskStart: '-125%', clip: { top: '0%', right: '0%', bottom: '100%', left: '100%' }, rotate: '90deg' };
+            case 'br':
+                return { inX: '100%', inY: '100%', outX: '-100%', outY: '-100%', maskAngle: '225deg', maskStart: '125%', clip: { top: '0%', right: '100%', bottom: '100%', left: '0%' }, rotate: '-90deg' };
+            default:
+                return { inX: '0%', inY: '0%', outX: '0%', outY: '0%', maskAngle: '0deg', maskStart: '125%', clip: { top: '0%', right: '0%', bottom: '0%', left: '0%' }, rotate: '90deg' };
+        }
+    }
+
+    function setClip(target, top, right, bottom, left) {
+        if (!target) {
             return;
-        }}
-        document.querySelectorAll('canvas[data-chart-config]').forEach(canvas => {{
-            if (canvas.dataset.initialized === '1') {{
+        }
+        target.style.setProperty('--ppt-clip-inset-top', top);
+        target.style.setProperty('--ppt-clip-inset-right', right);
+        target.style.setProperty('--ppt-clip-inset-bottom', bottom);
+        target.style.setProperty('--ppt-clip-inset-left', left);
+    }
+
+    function shapeClipFor(shape) {
+        switch ((shape || '').toLowerCase()) {
+            case 'circle':
+                return 'circle(0% at 50% 50%)';
+            case 'diamond':
+                return 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)';
+            case 'plus':
+                return 'polygon(40% 0%, 60% 0%, 60% 40%, 100% 40%, 100% 60%, 60% 60%, 60% 100%, 40% 100%, 40% 60%, 0% 60%, 0% 40%, 40% 40%)';
+            case 'star':
+                return 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)';
+            case 'square':
+                return 'inset(0% 0% 0% 0%)';
+            default:
+                return 'circle(0% at 50% 50%)';
+        }
+    }
+
+    function clearTransitionClasses(slide) {
+        if (!slide) {
+            return;
+        }
+        slide.classList.remove('ppt-transition-enter', 'ppt-transition-exit', 'pre-active');
+        Array.from(slide.classList).forEach(cls => {
+            if (cls.startsWith('ppt-transition-')) {
+                slide.classList.remove(cls);
+            }
+        });
+    }
+
+    function clearTransitionVariables(slide) {
+        if (!slide) {
+            return;
+        }
+        cssVarKeys.forEach(key => slide.style.removeProperty(key));
+    }
+
+    function getTransitionClasses(effect) {
+        switch (effect) {
+            case 'cover':
+                return { inClass: 'ppt-transition-cover-in', outClass: null };
+            case 'uncover':
+                return { inClass: null, outClass: 'ppt-transition-uncover-out' };
+            case 'flash':
+                return { inClass: 'ppt-transition-flash-in', outClass: 'ppt-transition-flash-out' };
+            default:
+                return { inClass: `ppt-transition-${effect}-in`, outClass: `ppt-transition-${effect}-out` };
+        }
+    }
+
+    function applyEffectVariables(incoming, outgoing, config, vectors, forward) {
+        if (incoming) {
+            incoming.style.setProperty('--ppt-transition-duration', `${config.duration}ms`);
+            incoming.style.setProperty('--ppt-transition-delay', `${config.delay}ms`);
+        }
+        if (outgoing) {
+            outgoing.style.setProperty('--ppt-transition-duration', `${config.duration}ms`);
+        }
+
+        switch (config.effect) {
+            case 'push':
+                if (incoming) {
+                    incoming.style.setProperty('--ppt-translate-in-x', vectors.inX);
+                    incoming.style.setProperty('--ppt-translate-in-y', vectors.inY);
+                }
+                if (outgoing) {
+                    outgoing.style.setProperty('--ppt-translate-out-x', vectors.outX);
+                    outgoing.style.setProperty('--ppt-translate-out-y', vectors.outY);
+                }
+                break;
+            case 'cover':
+                if (incoming) {
+                    incoming.style.setProperty('--ppt-translate-in-x', vectors.inX);
+                    incoming.style.setProperty('--ppt-translate-in-y', vectors.inY);
+                }
+                break;
+            case 'uncover':
+                if (outgoing) {
+                    outgoing.style.setProperty('--ppt-translate-out-x', vectors.outX);
+                    outgoing.style.setProperty('--ppt-translate-out-y', vectors.outY);
+                }
+                if (incoming) {
+                    incoming.classList.remove('pre-active');
+                    incoming.classList.add('active');
+                }
+                break;
+            case 'wipe':
+                if (incoming) {
+                    setClip(incoming, vectors.clip.top, vectors.clip.right, vectors.clip.bottom, vectors.clip.left);
+                }
+                if (outgoing) {
+                    setClip(outgoing, '0%', '0%', '0%', '0%');
+                }
+                break;
+            case 'split': {
+                const orient = (config.orientation || '').toLowerCase();
+                if (incoming) {
+                    if (orient === 'horz') {
+                        setClip(incoming, '50%', '0%', '50%', '0%');
+                    } else {
+                        setClip(incoming, '0%', '50%', '0%', '50%');
+                    }
+                }
+                if ((config.direction || 'in').toLowerCase() === 'out' && outgoing) {
+                    if (orient === 'horz') {
+                        setClip(outgoing, '50%', '0%', '50%', '0%');
+                    } else {
+                        setClip(outgoing, '0%', '50%', '0%', '50%');
+                    }
+                }
+                break;
+            }
+            case 'bars':
+            case 'blinds':
+            case 'comb':
+                if (incoming) {
+                    incoming.style.setProperty('--ppt-mask-angle', vectors.maskAngle);
+                    incoming.style.setProperty('--ppt-mask-start', vectors.maskStart);
+                }
+                if (outgoing) {
+                    outgoing.style.setProperty('--ppt-mask-angle', vectors.maskAngle);
+                    outgoing.style.setProperty('--ppt-mask-start', vectors.maskStart);
+                }
+                break;
+            case 'strips':
+                if (incoming) {
+                    incoming.style.setProperty('--ppt-mask-angle', vectors.maskAngle);
+                    incoming.style.setProperty('--ppt-mask-start', vectors.maskStart);
+                }
+                if (outgoing) {
+                    outgoing.style.setProperty('--ppt-mask-angle', vectors.maskAngle);
+                    outgoing.style.setProperty('--ppt-mask-start', vectors.maskStart);
+                }
+                break;
+            case 'checker':
+                if (incoming) {
+                    incoming.style.setProperty('--ppt-mask-start', '220%');
+                }
+                if (outgoing) {
+                    outgoing.style.setProperty('--ppt-mask-start', '220%');
+                }
+                break;
+            case 'zoom':
+                if (incoming) {
+                    incoming.style.setProperty('--ppt-scale-in', forward ? '0.35' : '1.15');
+                }
+                if (outgoing) {
+                    outgoing.style.setProperty('--ppt-scale-out', forward ? '1.1' : '0.35');
+                }
+                break;
+            case 'wheel':
+                if (incoming) {
+                    incoming.style.setProperty('--ppt-wheel-spokes', `${config.spokes || 6}`);
+                    incoming.style.setProperty('--ppt-mask-angle', vectors.maskAngle);
+                }
+                if (outgoing) {
+                    outgoing.style.setProperty('--ppt-wheel-spokes', `${config.spokes || 6}`);
+                    outgoing.style.setProperty('--ppt-mask-angle', vectors.maskAngle);
+                }
+                break;
+            case 'shape':
+                if (incoming) {
+                    incoming.style.setProperty('--ppt-clip-shape', shapeClipFor(config.shape));
+                }
+                if (outgoing) {
+                    outgoing.style.setProperty('--ppt-clip-shape', shapeClipFor(config.shape));
+                }
+                break;
+            case 'gallery':
+            case 'flip':
+            case 'cube':
+                if (incoming) {
+                    incoming.style.setProperty('--ppt-rotate-in', forward ? '-75deg' : '75deg');
+                }
+                if (outgoing) {
+                    outgoing.style.setProperty('--ppt-rotate-in', forward ? '75deg' : '-75deg');
+                }
+                break;
+            case 'switch':
+                if (incoming) {
+                    incoming.style.setProperty('--ppt-rotate-in', forward ? '-55deg' : '55deg');
+                }
+                if (outgoing) {
+                    outgoing.style.setProperty('--ppt-rotate-in', forward ? '55deg' : '-55deg');
+                }
+                break;
+            case 'conveyor':
+                if (incoming) {
+                    incoming.style.setProperty('--ppt-translate-in-x', vectors.inX);
+                    incoming.style.setProperty('--ppt-translate-in-y', vectors.inY);
+                    incoming.style.setProperty('--ppt-rotate-in', forward ? '-25deg' : '25deg');
+                }
+                if (outgoing) {
+                    outgoing.style.setProperty('--ppt-translate-out-x', vectors.outX);
+                    outgoing.style.setProperty('--ppt-translate-out-y', vectors.outY);
+                    outgoing.style.setProperty('--ppt-rotate-in', forward ? '25deg' : '-25deg');
+                }
+                break;
+            case 'pan':
+                if (incoming) {
+                    incoming.style.setProperty('--ppt-translate-in-x', vectors.inX);
+                    incoming.style.setProperty('--ppt-translate-in-y', vectors.inY);
+                    incoming.style.setProperty('--ppt-scale-in', '1.1');
+                }
+                if (outgoing) {
+                    outgoing.style.setProperty('--ppt-scale-out', '0.85');
+                }
+                break;
+            case 'rotate':
+                if (incoming) {
+                    incoming.style.setProperty('--ppt-rotate-in', forward ? '-120deg' : '120deg');
+                }
+                if (outgoing) {
+                    outgoing.style.setProperty('--ppt-rotate-in', forward ? '120deg' : '-120deg');
+                }
+                break;
+            case 'box':
+                if (incoming) {
+                    setClip(incoming, '50%', '25%', '50%', '25%');
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    function activateBlackout(active, duration) {
+        if (!blackout) {
+            return;
+        }
+        blackout.style.setProperty('--ppt-transition-duration', `${duration}ms`);
+        blackout.classList.toggle('active', active);
+    }
+
+    function finalizeTransition(previousIndex, nextIndex, config) {
+        const outgoing = slides[previousIndex];
+        const incoming = slides[nextIndex];
+
+        clearTransitionClasses(outgoing);
+        clearTransitionClasses(incoming);
+        clearTransitionVariables(outgoing);
+        clearTransitionVariables(incoming);
+
+        if (outgoing) {
+            outgoing.classList.remove('active');
+            outgoing.classList.remove('pre-active');
+        }
+        if (incoming) {
+            incoming.classList.remove('pre-active');
+            incoming.classList.add('active');
+        }
+
+        if (config.throughBlack) {
+            window.setTimeout(() => activateBlackout(false, Math.max(200, Math.round(config.duration / 2))), 20);
+        }
+
+        currentSlide = nextIndex;
+        isTransitioning = false;
+        updateControls();
+        initializeCharts();
+        scheduleAutoAdvance(currentSlide);
+        if (progress) {
+            progress.style.width = `${((currentSlide + 1) / totalSlides) * 100}%`;
+        }
+        document.dispatchEvent(new Event('slideChanged'));
+    }
+
+    function playTransition(nextIndex, config, meta) {
+        isTransitioning = true;
+        clearTimeout(autoAdvanceTimer);
+
+        const previousIndex = currentSlide;
+        const outgoing = slides[previousIndex];
+        const incoming = slides[nextIndex];
+        const vectors = directionVector(config.direction);
+
+        if (incoming) {
+            clearTransitionClasses(incoming);
+            clearTransitionVariables(incoming);
+            incoming.classList.add('ppt-transition-enter');
+            if (config.effect !== 'uncover') {
+                incoming.classList.add('pre-active');
+            } else {
+                incoming.classList.add('active');
+            }
+        }
+
+        if (outgoing) {
+            clearTransitionClasses(outgoing);
+            clearTransitionVariables(outgoing);
+            outgoing.classList.add('ppt-transition-exit');
+            outgoing.classList.add('active');
+        }
+
+        applyEffectVariables(incoming, outgoing, config, vectors, meta.forward);
+
+        const classes = getTransitionClasses(config.effect);
+        window.requestAnimationFrame(() => {
+            if (incoming && classes.inClass) {
+                incoming.classList.add(classes.inClass);
+            }
+            if (outgoing && classes.outClass) {
+                outgoing.classList.add(classes.outClass);
+            }
+        });
+
+        if (config.throughBlack) {
+            activateBlackout(true, Math.max(200, Math.round(config.duration / 2)));
+        }
+
+        const totalDuration = config.duration + config.delay;
+        window.setTimeout(() => finalizeTransition(previousIndex, nextIndex, config), totalDuration + 48);
+    }
+
+    function performImmediate(index) {
+        clearTimeout(autoAdvanceTimer);
+        const previousIndex = currentSlide;
+        const outgoing = slides[previousIndex];
+        const incoming = slides[index];
+
+        if (outgoing) {
+            clearTransitionClasses(outgoing);
+            clearTransitionVariables(outgoing);
+            outgoing.classList.remove('active');
+            outgoing.classList.remove('pre-active');
+        }
+
+        if (incoming) {
+            clearTransitionClasses(incoming);
+            clearTransitionVariables(incoming);
+            incoming.classList.add('active');
+            incoming.classList.remove('pre-active');
+        }
+
+        currentSlide = index;
+        isTransitioning = false;
+        updateControls();
+        initializeCharts();
+        scheduleAutoAdvance(currentSlide);
+        if (progress) {
+            progress.style.width = `${((currentSlide + 1) / totalSlides) * 100}%`;
+        }
+        document.dispatchEvent(new Event('slideChanged'));
+    }
+
+    function scheduleAutoAdvance(index) {
+        clearTimeout(autoAdvanceTimer);
+        const cfg = mergeTransition(index);
+        if (cfg.advanceAfter && cfg.advanceAfter > 0) {
+            autoAdvanceTimer = window.setTimeout(() => {
+                if (index === currentSlide) {
+                    const nextIndex = Math.min(totalSlides - 1, index + 1);
+                    if (nextIndex !== index) {
+                        showSlide(nextIndex, { force: true });
+                    }
+                }
+            }, cfg.advanceAfter);
+        }
+    }
+
+    function updateControls() {
+        if (prevBtn) {
+            prevBtn.disabled = currentSlide === 0;
+        }
+        if (nextBtn) {
+            const cfg = mergeTransition(currentSlide);
+            nextBtn.disabled = currentSlide === totalSlides - 1 || cfg.advanceOnClick === false;
+        }
+        if (progress) {
+            progress.style.width = `${((currentSlide + 1) / totalSlides) * 100}%`;
+        }
+    }
+
+    function initializeCharts() {
+        if (typeof Chart === 'undefined') {
+            return;
+        }
+        document.querySelectorAll('canvas[data-chart-config]').forEach(canvas => {
+            if (canvas.dataset.initialized === '1') {
                 return;
-            }}
-            try {{
+            }
+            try {
                 const config = JSON.parse(canvas.dataset.chartConfig);
                 new Chart(canvas.getContext('2d'), config);
                 canvas.dataset.initialized = '1';
-            }} catch (error) {{
+            } catch (error) {
                 console.error('Chart initialization failed', error);
-            }}
-        }});
-    }}
+            }
+        });
+    }
 
-    function showSlide(index) {{
-        if (index < 0 || index >= totalSlides || index === currentSlide) {{
+    function showSlide(index, options = {}) {
+        if (index < 0 || index >= totalSlides || index === currentSlide) {
             return;
-        }}
-        slides[currentSlide].classList.remove('active');
-        currentSlide = index;
-        slides[currentSlide].classList.add('active');
-        updateControls();
-        initializeCharts();
-    }}
+        }
+        if (isTransitioning) {
+            return;
+        }
+        const forward = index > currentSlide;
+        const currentConfig = mergeTransition(currentSlide);
+        if (forward && !options.force && currentConfig.advanceOnClick === false) {
+            return;
+        }
 
-    if (prevBtn) {{
-        prevBtn.addEventListener('click', () => showSlide(currentSlide - 1));
-    }}
-    if (nextBtn) {{
+        const nextConfig = mergeTransition(index);
+        if (!forward && nextConfig.direction) {
+            nextConfig.direction = invertDirection(nextConfig.direction);
+        }
+
+        if (nextConfig.effect === 'cut') {
+            performImmediate(index);
+            return;
+        }
+
+        if (!nextConfig.duration || nextConfig.duration < 1) {
+            nextConfig.duration = 700;
+        }
+
+        playTransition(index, nextConfig, { forward });
+    }
+
+    if (prevBtn) {
+        prevBtn.addEventListener('click', () => showSlide(currentSlide - 1, { force: true }));
+    }
+    if (nextBtn) {
         nextBtn.addEventListener('click', () => showSlide(currentSlide + 1));
-    }}
+    }
 
-    document.addEventListener('keydown', event => {{
-        if (event.key === 'ArrowRight' || event.key === 'PageDown' || event.key === ' ') {{
+    document.addEventListener('keydown', event => {
+        if (event.key === 'ArrowRight' || event.key === 'PageDown' || event.key === ' ') {
+            if (mergeTransition(currentSlide).advanceOnClick === false) {
+                return;
+            }
             event.preventDefault();
             showSlide(Math.min(totalSlides - 1, currentSlide + 1));
-        }} else if (event.key === 'ArrowLeft' || event.key === 'PageUp') {{
+        } else if (event.key === 'ArrowLeft' || event.key === 'PageUp') {
             event.preventDefault();
-            showSlide(Math.max(0, currentSlide - 1));
-        }}
-    }});
+            showSlide(Math.max(0, currentSlide - 1), { force: true });
+        }
+    });
 
-    window.addEventListener('resize', () => requestAnimationFrame(applyScale));
+    window.addEventListener('resize', () => window.requestAnimationFrame(applyScale));
 
-    window.addEventListener('load', () => {{
-        slides.forEach((slide, idx) => slide.classList.toggle('active', idx === 0));
+    window.addEventListener('load', () => {
+        slides.forEach((slide, idx) => {
+            slide.classList.toggle('active', idx === 0);
+            slide.classList.toggle('pre-active', idx !== 0);
+        });
         updateControls();
         applyScale();
         initializeCharts();
-    }});
+        scheduleAutoAdvance(0);
+        document.dispatchEvent(new Event('slideChanged'));
+    });
 
     window.showSlide = showSlide;
     window.nextSlide = () => showSlide(currentSlide + 1);
-    window.prevSlide = () => showSlide(currentSlide - 1);
-}})();
+    window.prevSlide = () => showSlide(currentSlide - 1, { force: true });
+})();
 """.strip()
+
+        base_js = (js_template
+                   .replace('__SLIDE_WIDTH__', f"{slide_width:.2f}")
+                   .replace('__SLIDE_HEIGHT__', f"{slide_height:.2f}")
+                   .replace('__TRANSITION_DATA__', transition_json))
 
         html_content = f"""<!DOCTYPE html>
 <html lang="en">
@@ -2663,6 +3409,7 @@ body {{
         <div class="stage-wrapper">
             <div class="slide-stage">
                 {''.join(slides_markup)}
+                <div class="transition-blackout" id="transitionBlackout"></div>
             </div>
         </div>
         <div class="controls">
@@ -2743,11 +3490,22 @@ body {{
         if svg_fragment:
             content.append(svg_fragment)
 
-        if element.get('video'):
-            content.append(f'''<video controls style="width: 100%; height: 100%; object-fit: contain;">
-                <source src="{element['video']}" type="video/mp4">
-                Your browser does not support the video tag.
-            </video>''')
+        video_payload = element.get('video')
+        if video_payload:
+            if isinstance(video_payload, dict):
+                content.append(self._render_video_element(video_payload))
+            else:
+                legacy_payload = {
+                    'sources': [{
+                        'src': video_payload,
+                        'mime': 'video/mp4',
+                        'external': False
+                    }],
+                    'poster': element.get('image'),
+                    'iframe': None,
+                    'fallback': None
+                }
+                content.append(self._render_video_element(legacy_payload))
         elif element.get('audio'):
             content.append(f'''<audio controls style="width: 100%;">
                 <source src="{element['audio']}">
@@ -2768,7 +3526,7 @@ body {{
                 image_styles.append("object-fit: fill")
             else:
                 image_styles.append("object-fit: contain")
-            content.append(f'<img src="{element["image"]}" style="{"; ".join(image_styles)}">')
+                content.append(f'<img src="{element["image"]}" style="{"; ".join(image_styles)}">')
 
         text_props = element.get('text_props') or {}
         wrap_text = text_props.get('wrap_text', True)
@@ -2811,11 +3569,77 @@ body {{
             )
             content.append(f'<div class="ppt-text-block" style="{"; ".join(wrapper_styles)}">{inner_block}</div>')
 
+        if not paragraphs_html and not video_payload and element.get('fill', {}).get('type') == 'none':
+            styles.append("pointer-events: none")
+
         shape_html = f'<div class="ppt-element" data-shape-id="{element.get("shape_id", "")}" style="{"; ".join(styles)}">{"".join(content)}</div>'
         if element.get('hyperlink'):
             shape_html = f'<a href="{element["hyperlink"]}" target="_blank" class="ppt-link">{shape_html}</a>'
 
         return shape_html
+
+    def _render_video_element(self, video_info: Dict) -> str:
+        """비디오 요소 HTML 생성"""
+        iframe_src = video_info.get('iframe')
+        fallback_link = video_info.get('fallback')
+        if iframe_src:
+            attrs = [
+                'style="width: 100%; height: 100%; border: 0;"',
+                'allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"',
+                'allowfullscreen'
+            ]
+            iframe_html = f'<iframe src="{html.escape(iframe_src)}" {" ".join(attrs)}></iframe>'
+            if fallback_link:
+                iframe_html += (
+                    f'<p style="margin-top: 4px;">'
+                    f'<a href="{html.escape(fallback_link)}" target="_blank" rel="noopener noreferrer">'
+                    f'Open video'
+                    f'</a></p>'
+                )
+            return iframe_html
+
+        sources = video_info.get('sources') or []
+        poster = video_info.get('poster')
+
+        attr_parts = ['controls preload="metadata"', 'style="width: 100%; height: 100%; object-fit: contain;"']
+        primary_source = None
+        for source in sources:
+            src_value = source.get('src')
+            if src_value:
+                primary_source = src_value
+                break
+
+        if primary_source:
+            attr_parts.append(f'src="{html.escape(primary_source)}"')
+        if poster:
+            attr_parts.append(f'poster="{html.escape(poster)}"')
+
+        source_tags = []
+        for source in sources:
+            src_value = source.get('src')
+            if not src_value:
+                continue
+            mime_value = source.get('mime') or 'video/mp4'
+            source_tags.append(
+                f'<source src="{html.escape(src_value)}" type="{html.escape(mime_value)}">'
+            )
+
+        video_html = (
+            f'<video {" ".join(attr_parts)}>'
+            f'{"".join(source_tags)}'
+            f'Your browser does not support the video tag.'
+            f'</video>'
+        )
+
+        if fallback_link:
+            video_html += (
+                f'<p style="margin-top: 4px;">'
+                f'<a href="{html.escape(fallback_link)}" target="_blank" rel="noopener noreferrer">'
+                f'Open video'
+                f'</a></p>'
+            )
+
+        return video_html
 
     def generate_table_html(self, table_data, slide_width, slide_height) -> str:
         """테이블 HTML 생성"""
