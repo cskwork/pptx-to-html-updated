@@ -2100,24 +2100,6 @@ class EnhancedPPTXToHTMLV2:
                     else:
                         element['image'] = media['path']
 
-        src_rect = pic.find('.//a:srcRect', self.ns)
-        if src_rect is not None:
-            crop: Dict[str, float] = {}
-            for attr in ('l', 'r', 't', 'b'):
-                value = src_rect.get(attr)
-                if value is None:
-                    continue
-                try:
-                    crop[attr] = int(value) / 100000
-                except ValueError:
-                    continue
-            if crop:
-                element['image_crop'] = crop
-
-        stretch = pic.find('.//a:stretch', self.ns)
-        if stretch is not None:
-            element['image_stretch'] = True
-
         poster_path = element.get('image')
         video_payload = self._extract_video_payload(pic, zip_ref, slide_rels_path, idx, poster_path)
         if video_payload:
@@ -3581,7 +3563,7 @@ body {
                 image_styles.append("object-fit: fill")
             else:
                 image_styles.append("object-fit: contain")
-            content.append(f'<img src="{element["image"]}" style="{"; ".join(image_styles)}">')
+                content.append(f'<img src="{element["image"]}" style="{"; ".join(image_styles)}">')
 
         text_props = element.get('text_props') or {}
         wrap_text = text_props.get('wrap_text', True)
