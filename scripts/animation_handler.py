@@ -297,8 +297,8 @@ class AnimationHandler:
         Returns:
             JavaScript 문자열
         """
-        if not animations:
-            return ""
+        # if not animations:
+        #     return ""
 
         # 애니메이션 데이터를 JSON 형식으로 변환
         anim_configs = []
@@ -314,8 +314,8 @@ class AnimationHandler:
                     'delay': anim['delay']
                 })
 
-        if not anim_configs:
-            return ""
+        # if not anim_configs:
+        #     return ""
 
         import json
         anim_json = json.dumps(anim_configs, ensure_ascii=False)

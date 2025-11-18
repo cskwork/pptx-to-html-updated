@@ -2243,6 +2243,22 @@ class EnhancedPPTXToHTMLV2:
                         except (ValueError, TypeError):
                             pass
 
+                # Scale Line Spacing (if fixed px)
+                line_spacing = para.get('line_spacing')
+                if line_spacing and line_spacing.get('unit') == 'px':
+                    try:
+                        line_spacing['value'] *= sy
+                    except (ValueError, TypeError):
+                        pass
+
+        # Scale Text Padding
+        if 'text_padding' in element:
+            padding = element['text_padding']
+            if 'left' in padding: padding['left'] *= sx
+            if 'right' in padding: padding['right'] *= sx
+            if 'top' in padding: padding['top'] *= sy
+            if 'bottom' in padding: padding['bottom'] *= sy
+
         # Scale Border (for Shapes/Groups)
         if 'border' in element:
             border = element['border']
@@ -2810,6 +2826,51 @@ class EnhancedPPTXToHTMLV2:
             )
             slides_markup.append(slide_markup)
 
+        # Collect all animations and map shape IDs to element IDs
+        all_animations = []
+        shape_id_map = {}
+        
+        for slide in self.slides_data:
+            if slide.get('animations'):
+                all_animations.extend(slide['animations'])
+            
+            # Build map of shape_id -> element_id (or selector)
+            # Since we don't have unique IDs for every element in HTML yet, 
+            # we rely on data-shape-id attribute which we added in generate_element_html
+            # But AnimationHandler expects element IDs.
+            # We need to ensure elements have IDs or update AnimationHandler to use selectors.
+            # For now, let's update the JS generation to use querySelector with data-shape-id if ID is missing.
+            # Actually, let's look at generate_element_html again. It adds data-shape-id.
+            # We can generate a map where the "ID" is actually a selector or we modify AnimationHandler.
+            # Let's modify AnimationHandler to be more flexible, OR just generate a map here 
+            # that maps shape_id -> unique DOM ID, and ensure we add those IDs to elements.
+            
+            # Better approach: The current generate_element_html adds data-shape-id.
+            # Let's map shape_id -> shape_id and update AnimationHandler to use [data-shape-id="..."]
+            pass
+
+        # Wait, AnimationHandler.generate_animation_javascript expects a map of shape_id -> element_id.
+        # And it generates `document.getElementById(anim.elementId)`.
+        # We should probably update AnimationHandler to support data attributes or 
+        # we generate unique IDs for all elements and map them.
+        
+        # Let's generate unique IDs for elements if they don't have them.
+        # In generate_element_html, we are NOT currently adding unique IDs to all elements, just data-shape-id.
+        # Let's update generate_element_html to add id="shape_{shape_id}" if shape_id exists.
+        
+        # But first, let's just get the JS generated.
+        # We need to iterate over all elements to build the map.
+        for slide in self.slides_data:
+            for element in slide['elements']:
+                s_id = element.get('shape_id')
+                if s_id:
+                    # We will ensure generate_element_html adds id="shape_{s_id}"
+                    shape_id_map[s_id] = f"shape_{s_id}"
+                    
+                # Also handle groups recursively if needed? 
+                # AnimationHandler usually targets the top level shape.
+
+        animation_js = animation_handler.generate_animation_javascript(all_animations, shape_id_map)
         animation_css = animation_handler.generate_css_animations()
         transition_css = self.transition_handler.generate_transition_css()
         transition_data = self.transition_handler.serialize_transitions(self.slides_data)
@@ -2979,6 +3040,7 @@ body {
             css_sections.append(base_css)
         if animation_css:
             css_sections.append(animation_css)
+            
         css_content = '\n\n'.join(css_sections)
 
         js_template = """(function() {
@@ -3567,6 +3629,9 @@ body {
                    .replace('__SLIDE_HEIGHT__', f"{slide_height:.2f}")
                    .replace('__TRANSITION_DATA__', transition_json))
 
+        if animation_js:
+            base_js += "\n\n" + animation_js
+
         html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -3789,7 +3854,7 @@ body {
         if not paragraphs_html and not video_payload and element.get('fill', {}).get('type') == 'none':
             styles.append("pointer-events: none")
 
-        shape_html = f'<div class="ppt-element" data-shape-id="{element.get("shape_id", "")}" style="{"; ".join(styles)}">{"".join(content)}</div>'
+        shape_html = f'<div class="ppt-element" id="shape_{element.get("shape_id", "")}" data-shape-id="{element.get("shape_id", "")}" style="{"; ".join(styles)}">{"".join(content)}</div>'
         if element.get('hyperlink'):
             shape_html = f'<a href="{element["hyperlink"]}" target="_blank" class="ppt-link">{shape_html}</a>'
 
