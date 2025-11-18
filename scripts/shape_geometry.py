@@ -47,6 +47,11 @@ class ShapeGeometryConverter:
             'flowChartData': self._create_parallelogram,
             'flowChartTerminator': self._create_terminator,
             'flowChartDocument': self._create_document,
+            'line': self._create_line,
+            'straightConnector1': self._create_line,
+            'bentConnector2': self._create_bent_connector_2,
+            'bentConnector3': self._create_bent_connector_3,
+            'curvedConnector3': self._create_curved_connector_3,
         }
 
     def extract_custom_geometry(self, sp_pr: ET.Element) -> Optional[Dict[str, object]]:
@@ -278,6 +283,22 @@ class ShapeGeometryConverter:
         """문서 (플로우차트) SVG 경로"""
         return "M 0 0 L 100 0 L 100 85 Q 75 100 50 85 Q 25 70 0 85 Z"
 
+    def _create_line(self) -> str:
+        """직선/커넥터 SVG 경로"""
+        return "M 0 0 L 100 100"
+
+    def _create_bent_connector_2(self) -> str:
+        """꺾인 연결선 (2 segments)"""
+        return "M 0 0 L 50 0 L 50 100 L 100 100"
+
+    def _create_bent_connector_3(self) -> str:
+        """꺾인 연결선 (3 segments)"""
+        return "M 0 0 L 50 0 L 50 100 L 100 100"
+
+    def _create_curved_connector_3(self) -> str:
+        """곡선 연결선"""
+        return "M 0 0 Q 50 0 50 50 T 100 100"
+
     def _build_svg_fragment(self, svg_geom, fill: Dict, border: Dict, image_url: Optional[str] = None) -> str:
         """SVG 요소 생성"""
         if isinstance(svg_geom, dict):
@@ -324,7 +345,7 @@ class ShapeGeometryConverter:
 
         return (
             f'<svg viewBox="{view_box[0]} {view_box[1]} {view_box[2]} {view_box[3]}" preserveAspectRatio="none" '
-            'xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: 100%;">'
+            'xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: 100%; overflow: visible;">'
             f'{"".join(content)}'
             '</svg>'
         )
@@ -340,11 +361,18 @@ class ShapeGeometryConverter:
             f"width: {position.get('width', 0.0):.2f}px",
             f"height: {position.get('height', 0.0):.2f}px",
             f"z-index: {z_index}",
-            "transform-origin: top left"
         ]
 
+        transform_ops = []
         if position.get('rotation', 0) != 0:
-            styles.append(f"transform: rotate({position['rotation']}deg)")
+            transform_ops.append(f"rotate({position['rotation']}deg)")
+        if position.get('flip_h'):
+            transform_ops.append("scaleX(-1)")
+        if position.get('flip_v'):
+            transform_ops.append("scaleY(-1)")
+
+        if transform_ops:
+            styles.append(f"transform: {' '.join(transform_ops)}")
 
         if shadow:
             styles.append(f"box-shadow: {shadow}")

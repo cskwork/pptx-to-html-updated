@@ -548,6 +548,11 @@ class EnhancedPPTXToHTMLV2:
             if rot:
                 position['rotation'] = int(rot) / 60000
 
+            if xfrm.get('flipH') == '1' or xfrm.get('flipH') == 'true':
+                position['flip_h'] = True
+            if xfrm.get('flipV') == '1' or xfrm.get('flipV') == 'true':
+                position['flip_v'] = True
+
         if position['width'] and position['height']:
             position['pivot_x'] = position['x'] + position['width'] / 2.0
             position['pivot_y'] = position['y'] + position['height'] / 2.0
@@ -2766,13 +2771,16 @@ body {
     align-items: center;
     justify-content: center;
     padding: 24px;
+    overflow: hidden;
+    min-width: 0;
+    min-height: 0;
 }
 
 .slide-stage {
     width: var(--slide-width);
     height: var(--slide-height);
     position: relative;
-    transform-origin: top left;
+    transform-origin: center center;
     overflow: hidden;
     background-color: #000;
 }
@@ -3550,6 +3558,11 @@ body {
         transforms = []
         if pos.get('rotation'):
             transforms.append(f"rotate({pos['rotation']:.3f}deg)")
+        if pos.get('flip_h'):
+            transforms.append("scaleX(-1)")
+        if pos.get('flip_v'):
+            transforms.append("scaleY(-1)")
+            
         if transforms:
             styles.append(f"transform: {' '.join(transforms)}")
 
