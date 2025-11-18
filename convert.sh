@@ -50,21 +50,36 @@ print_header() {
     echo ""
 }
 
-# 인자 확인
-if [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
+# 인자 확인 및 자동 감지
+if [ -z "$1" ]; then
+    # input/ 폴더에서 .pptx 파일 찾기
+    shopt -s nullglob
+    PPTX_FILES=(input/*.pptx)
+    shopt -u nullglob
+    
+    if [ ${#PPTX_FILES[@]} -eq 1 ]; then
+        INPUT_FILE="${PPTX_FILES[0]}"
+        echo -e "${YELLOW}ℹ️  입력 파일이 지정되지 않았습니다. input/ 폴더의 파일을 자동으로 선택합니다.${NC}"
+    elif [ ${#PPTX_FILES[@]} -gt 1 ]; then
+        echo -e "${RED}❌ 오류: input/ 폴더에 여러 개의 PowerPoint 파일이 있습니다. 변환할 파일을 지정해주세요.${NC}"
+        echo "발견된 파일:"
+        for file in "${PPTX_FILES[@]}"; do
+            echo "  - $file"
+        done
+        exit 1
+    else
+        echo -e "${RED}❌ 오류: 입력 파일을 지정해주세요${NC}"
+        echo ""
+        show_help
+        exit 1
+    fi
+elif [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
     show_help
     exit 0
+else
+    INPUT_FILE="$1"
 fi
 
-if [ -z "$1" ]; then
-    echo -e "${RED}❌ 오류: 입력 파일을 지정해주세요${NC}"
-    echo ""
-    show_help
-    exit 1
-fi
-
-# 파라미터 설정
-INPUT_FILE="$1"
 OUTPUT_DIR="${2:-output}"
 DPI="${3:-150}"
 
@@ -124,18 +139,32 @@ echo ""
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
 # 결과 확인
-if [ $EXIT_CODE -eq 0 ]; then
+    if [ $EXIT_CODE -eq 0 ]; then
     echo -e "${GREEN}✅ 변환 완료!${NC} (소요 시간: ${DURATION}초)"
     echo ""
     echo -e "${BLUE}📂 출력 파일:${NC}"
 
+    # 입력 파일명에서 확장자 제거 및 기본 이름 추출
+    BASENAME=$(basename "$INPUT_FILE")
+    FILENAME="${BASENAME%.*}"
+    HTML_FILE="$OUTPUT_DIR/$FILENAME.html"
+    REPORT_FILE="$OUTPUT_DIR/${FILENAME}_report.md"
+
     # 생성된 파일 목록
-    if [ -f "$OUTPUT_DIR/presentation.html" ]; then
-        echo -e "  ${GREEN}✓${NC} $OUTPUT_DIR/presentation.html"
+    if [ -f "$HTML_FILE" ]; then
+        echo -e "  ${GREEN}✓${NC} $HTML_FILE"
+    elif [ -f "$OUTPUT_DIR/presentation.html" ]; then
+        # 하위 호환성 또는 기본값
+        HTML_FILE="$OUTPUT_DIR/presentation.html"
+        echo -e "  ${GREEN}✓${NC} $HTML_FILE"
     fi
-    if [ -f "$OUTPUT_DIR/presentation_report.md" ]; then
+    
+    if [ -f "$REPORT_FILE" ]; then
+        echo -e "  ${GREEN}✓${NC} $REPORT_FILE"
+    elif [ -f "$OUTPUT_DIR/presentation_report.md" ]; then
         echo -e "  ${GREEN}✓${NC} $OUTPUT_DIR/presentation_report.md"
     fi
+
     if [ -f "$OUTPUT_DIR/conversion.log" ]; then
         echo -e "  ${GREEN}✓${NC} $OUTPUT_DIR/conversion.log"
     fi
@@ -146,7 +175,7 @@ if [ $EXIT_CODE -eq 0 ]; then
 
     echo ""
     echo -e "${BLUE}🌐 HTML 파일 열기:${NC}"
-    echo -e "  open $OUTPUT_DIR/presentation.html"
+    echo -e "  open \"$HTML_FILE\""
     echo ""
 
     # macOS에서 자동으로 열기 제안
@@ -154,9 +183,9 @@ if [ $EXIT_CODE -eq 0 ]; then
     echo ""
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         if command -v open &> /dev/null; then
-            open "$OUTPUT_DIR/presentation.html"
+            open "$HTML_FILE"
         elif command -v xdg-open &> /dev/null; then
-            xdg-open "$OUTPUT_DIR/presentation.html"
+            xdg-open "$HTML_FILE"
         else
             echo -e "${YELLOW}⚠️  브라우저를 자동으로 열 수 없습니다. 수동으로 파일을 열어주세요.${NC}"
         fi

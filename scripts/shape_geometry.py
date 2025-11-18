@@ -278,7 +278,7 @@ class ShapeGeometryConverter:
         """문서 (플로우차트) SVG 경로"""
         return "M 0 0 L 100 0 L 100 85 Q 75 100 50 85 Q 25 70 0 85 Z"
 
-    def _build_svg_fragment(self, svg_geom, fill: Dict, border: Dict) -> str:
+    def _build_svg_fragment(self, svg_geom, fill: Dict, border: Dict, image_url: Optional[str] = None) -> str:
         """SVG 요소 생성"""
         if isinstance(svg_geom, dict):
             path_str = svg_geom.get('path', '')
@@ -287,19 +287,45 @@ class ShapeGeometryConverter:
             path_str = svg_geom
             view_box = (0.0, 0.0, 100.0, 100.0)
 
-        fill_attr = 'none'
-        if fill.get('type') == 'solid':
-            fill_attr = fill.get('color', 'none')
-        elif fill.get('type') == 'gradient' and fill.get('gradient'):
-            fill_attr = fill['gradient'][0][1]
-
         stroke = border.get('color', '#000000')
-        stroke_width = border.get('width', 1)
+        stroke_width = border.get('width', 0)
+        
+        content = []
+
+        if image_url:
+            # 이미지 채우기 (ClipPath 사용)
+            # ID 생성 (경로 문자열 해시 사용으로 간단하게 고유성 확보 시도)
+            import hashlib
+            clip_id = f"clip_{hashlib.md5(path_str.encode()).hexdigest()[:8]}"
+            
+            content.append(f'<defs><clipPath id="{clip_id}"><path d="{path_str}" /></clipPath></defs>')
+            # 이미지 비율 유지 설정은 상황에 따라 다를 수 있으나, 도형 채우기는 보통 stretch(none) 또는 cover(slice)
+            # 여기서는 fill과 유사하게 전체 영역을 채우도록 설정
+            content.append(f'<image href="{image_url}" x="{view_box[0]}" y="{view_box[1]}" width="{view_box[2]}" height="{view_box[3]}" preserveAspectRatio="none" clip-path="url(#{clip_id})" />')
+            
+            # 테두리가 있는 경우 위에 그리기
+            if stroke_width > 0:
+                content.append(f'<path d="{path_str}" fill="none" stroke="{stroke}" stroke-width="{stroke_width}" />')
+        else:
+            # 일반 채우기 (Solid/Gradient)
+            fill_attr = 'none'
+            if fill.get('type') == 'solid':
+                fill_attr = fill.get('color', 'none')
+            elif fill.get('type') == 'gradient' and fill.get('gradient'):
+                fill_attr = fill['gradient'][0][1]
+            
+            # 테두리 기본값 처리
+            if stroke_width == 0 and fill_attr == 'none':
+                 stroke_width = 0 # 투명
+            elif stroke_width == 0:
+                 stroke_width = 0
+
+            content.append(f'<path d="{path_str}" fill="{fill_attr}" stroke="{stroke}" stroke-width="{stroke_width}" />')
 
         return (
             f'<svg viewBox="{view_box[0]} {view_box[1]} {view_box[2]} {view_box[3]}" preserveAspectRatio="none" '
             'xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: 100%;">'
-            f'<path d="{path_str}" fill="{fill_attr}" stroke="{stroke}" stroke-width="{stroke_width}" />'
+            f'{"".join(content)}'
             '</svg>'
         )
 

@@ -1083,9 +1083,13 @@ class EnhancedPPTXToHTMLV2:
                     continue
 
                 fmt = run.get('formatting', {})
+                # Convert font size to px for consistent rendering
+                font_size_pt = float(fmt.get('font_size', 18))
+                font_size_px = self._pt_to_px(font_size_pt)
+                
                 span_styles = [
                     f"font-family: '{fmt.get('font_family', 'Arial')}'",
-                    f"font-size: {fmt.get('font_size', 18)}pt",
+                    f"font-size: {font_size_px:.1f}px",
                     f"color: {fmt.get('color', '#000000')}"
                 ]
                 if fmt.get('bold'):
@@ -1198,7 +1202,6 @@ class EnhancedPPTXToHTMLV2:
                 paragraph_info['runs'] = runs
                 paragraphs.append(paragraph_info)
 
-        estimated_height = 0.0
         max_font_px = 0.0
         total_lines = 0
 
@@ -1238,12 +1241,10 @@ class EnhancedPPTXToHTMLV2:
             para_height = line_height_px * line_count
             para_height += para.get('space_before', 0.0) + para.get('space_after', 0.0)
 
-            estimated_height += para_height
             total_lines += line_count
 
         text_props = {
             'wrap_text': wrap_text,
-            'estimated_height': estimated_height,
             'max_font_px': max_font_px,
             'line_count': total_lines,
             'paragraph_count': len(paragraphs)
@@ -2191,15 +2192,22 @@ class EnhancedPPTXToHTMLV2:
                        chart_extractor, shape_converter, smartart_parser,
                        animation_handler, elements: List[Dict], transform_chain: Optional[List[Dict]],
                        skip_placeholders: bool = False):
-        """그룹 도형 처리"""
-        transform_chain = transform_chain or []
+        """그룹 도형 처리 (Nested approach)"""
+        # Note: We ignore the incoming transform_chain because we are building a nested structure.
+        # The parent group (if any) handles the transform for this group.
+        
         if skip_placeholders:
             ph = grp_sp.find('.//p:nvGrpSpPr/p:nvPr/p:ph', self.ns)
             if ph is not None:
                 return
-        group_transform = self._extract_group_transform(grp_sp)
-        new_chain = transform_chain + [group_transform]
 
+        # Extract group transform info
+        group_transform = self._extract_group_transform(grp_sp)
+        
+        # Create container for children
+        group_children: List[Dict] = []
+        
+        # Process children (pass empty transform_chain to avoid flattening)
         for child in grp_sp:
             tag = self._strip_namespace(child.tag)
             if tag in {'nvGrpSpPr', 'grpSpPr'}:
@@ -2210,22 +2218,64 @@ class EnhancedPPTXToHTMLV2:
                     continue
 
             if tag in {'sp', 'cxnSp'}:
-                elements.append(
-                    self.process_shape(child, zip_ref, slide_rels_path, idx,
-                                       shape_converter, animation_handler,
-                                       placeholder_context, transform_chain=new_chain)
-                )
+                # Process shape and append explicitly
+                child_element = self.process_shape(child, zip_ref, slide_rels_path, idx,
+                                                   shape_converter, animation_handler,
+                                                   placeholder_context, transform_chain=[])
+                group_children.append(child_element)
+                
             elif tag == 'pic':
                 self._process_picture(child, zip_ref, slide_rels_path, idx,
-                                      placeholder_context, new_chain, elements)
+                                      placeholder_context, [], group_children)
+                                      
             elif tag == 'graphicFrame':
                 self._process_graphic_frame(child, zip_ref, slide_rels_path, idx,
                                             placeholder_context, chart_extractor,
-                                            smartart_parser, new_chain, elements)
+                                            smartart_parser, [], group_children)
+                                            
             elif tag == 'grpSp':
                 self._process_group(child, zip_ref, slide_rels_path, idx,
                                     placeholder_context, chart_extractor, shape_converter, smartart_parser,
-                                    animation_handler, elements, new_chain, skip_placeholders=skip_placeholders)
+                                    animation_handler, group_children, [], skip_placeholders=skip_placeholders)
+
+        # Normalize children positions relative to this group
+        # Target coordinate system: 0..ext_width, 0..ext_height
+        # Source coordinate system: chOff.x..chOff.x+chExt.cx, ...
+        
+        ox = group_transform['origin_x']
+        oy = group_transform['origin_y']
+        sx = group_transform['scale_x']
+        sy = group_transform['scale_y']
+        
+        for child in group_children:
+            pos = child['position']
+            # Apply scaling and translation to map child coords to group visual coords
+            pos['x'] = (pos['x'] - ox) * sx
+            pos['y'] = (pos['y'] - oy) * sy
+            pos['width'] *= sx
+            pos['height'] *= sy
+            
+            # Adjust pivot if present
+            if 'pivot_x' in pos:
+                pos['pivot_x'] = (pos['pivot_x'] - ox) * sx
+            if 'pivot_y' in pos:
+                pos['pivot_y'] = (pos['pivot_y'] - oy) * sy
+
+        # Create Group Element
+        group_element = {
+            'type': 'group',
+            'position': {
+                'x': group_transform['offset_x'],
+                'y': group_transform['offset_y'],
+                'width': group_transform['ext_width'],
+                'height': group_transform['ext_height'],
+                'rotation': group_transform['rotation']
+            },
+            'children': group_children,
+            'z_index': self._next_z_index()
+        }
+        
+        elements.append(group_element)
 
     def _process_sp_tree(self, container, zip_ref, slide_rels_path, idx, placeholder_context: Dict[str, Dict],
                          chart_extractor, shape_converter, smartart_parser,
@@ -3462,6 +3512,28 @@ body {
 
     def generate_element_html(self, element, slide_width, slide_height) -> str:
         """요소 HTML 생성 (도형, 텍스트, 미디어 등)"""
+        if element.get('type') == 'group':
+            # Phase 2: Nested Group Rendering
+            pos = element['position']
+            styles = [
+                f"position: absolute",
+                f"left: {pos['x']:.2f}px",
+                f"top: {pos['y']:.2f}px",
+                f"width: {pos['width']:.2f}px",
+                f"height: {pos['height']:.2f}px",
+                f"z-index: {element.get('z_index', 1)}"
+            ]
+            if pos.get('rotation'):
+                styles.append(f"transform: rotate({pos['rotation']:.3f}deg)")
+
+            # Render children recursively
+            children_html = []
+            for child in element['children']:
+                # Pass parent dimensions (though child positions are relative, function sig needs them)
+                children_html.append(self.generate_element_html(child, pos['width'], pos['height']))
+            
+            return f'<div class="group-shape" style="{"; ".join(styles)}">{"".join(children_html)}</div>'
+
         if element.get('type') == 'table':
             return self.generate_table_html(element, slide_width, slide_height)
 
@@ -3504,10 +3576,15 @@ body {
         if has_custom_geometry:
             styles.append("background-color: transparent")
             shape_converter = ShapeGeometryConverter(self.ns, self.logger)
+            
+            # Pass image URL if this shape has an image fill
+            image_url = element.get('image')
+            
             svg_fragment = shape_converter._build_svg_fragment(
                 element['custom_geometry'],
                 element.get('fill', {}),
-                element.get('border', {})
+                element.get('border', {}),
+                image_url=image_url
             )
         else:
             fill = element.get('fill', {'type': 'none'})
@@ -3548,7 +3625,8 @@ body {
                 <source src="{element['audio']}">
                 Your browser does not support the audio tag.
             </audio>''')
-        elif element.get('image'):
+        elif element.get('image') and not has_custom_geometry:
+            # Only add img tag if NOT using custom geometry (which handles image via SVG clipPath)
             image_styles = ["width: 100%", "height: 100%"]
             crop = element.get('image_crop') or {}
             stretch = element.get('image_stretch')
@@ -3563,7 +3641,8 @@ body {
                 image_styles.append("object-fit: fill")
             else:
                 image_styles.append("object-fit: contain")
-                content.append(f'<img src="{element["image"]}" style="{"; ".join(image_styles)}">')
+                
+            content.append(f'<img src="{element["image"]}" style="{"; ".join(image_styles)}">')
 
         text_props = element.get('text_props') or {}
         wrap_text = text_props.get('wrap_text', True)
@@ -3575,31 +3654,31 @@ body {
             pad_right = padding.get('right', 0.0)
             pad_bottom = padding.get('bottom', 0.0)
             pad_left = padding.get('left', 0.0)
-            available_height = max(0.0, pos.get('height', 0.0) - (pad_top + pad_bottom))
-            estimated_height = text_props.get('estimated_height')
-            vertical_offset = 0.0
-            if estimated_height and estimated_height > 0 and available_height > 0:
-                extra_space = max(0.0, available_height - estimated_height)
-                if anchor == 'ctr':
-                    vertical_offset = extra_space / 2.0
-                elif anchor == 'b':
-                    vertical_offset = extra_space
+
+            # Flexbox layout for vertical alignment
+            justify_content = 'flex-start'
+            if anchor == 'ctr':
+                justify_content = 'center'
+            elif anchor == 'b':
+                justify_content = 'flex-end'
+            elif anchor in ('dist', 'just'):
+                justify_content = 'space-between'
 
             wrapper_styles = [
                 "position: relative",
-                "display: block",
+                "display: flex",
+                "flex-direction: column",
+                f"justify-content: {justify_content}",
                 "height: 100%",
                 f"padding: {pad_top:.2f}px {pad_right:.2f}px {pad_bottom:.2f}px {pad_left:.2f}px",
-                "overflow: visible"
+                "overflow: visible"  # Allow overlap if needed, or hidden if strict
             ]
 
             inner_styles = ["width: 100%"]
-            if vertical_offset:
-                inner_styles.append(f"margin-top: {vertical_offset:.2f}px")
             if not wrap_text:
-                inner_styles.extend(["white-space: nowrap", "overflow: visible", "width: fit-content"])
+                inner_styles.extend(["white-space: nowrap", "width: fit-content"])
             else:
-                inner_styles.append("white-space: normal")
+                inner_styles.extend(["white-space: normal", "overflow-wrap: break-word", "word-break: break-word"])
 
             inner_block = (
                 f'<div class="ppt-text-inner" style="{"; ".join(inner_styles)}">{paragraphs_html}</div>'

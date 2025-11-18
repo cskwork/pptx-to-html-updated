@@ -1,4 +1,4 @@
-# High-Fidelity Conversion Update (2025-10-21)
+# High-Fidelity Conversion Update (2025-11-18)
 
 ## 구현 개요
 - 픽셀 기반 절대 좌표 렌더링으로 슬라이드 레이아웃을 PPTX와 1:1 매칭.
@@ -13,6 +13,7 @@
   - `FontManager` 연동 및 픽셀 좌표 기반 요소 렌더링.
   - 문단 서식(줄 간격, 들여쓰기, 번호 매기기) 세밀화.
   - 그룹 도형/커넥터 재귀 처리와 z-index 유지, 변환 체인으로 중첩 배치 대응.
+  - **[NEW] 텍스트 수직 정렬 개선**: `estimated_height` 기반의 부정확한 계산을 제거하고 `display: flex`를 사용하여 브라우저 네이티브 수직 정렬(`justify-content`) 적용. 줄바꿈 시에도 정확한 중앙/하단 정렬 보장.
 - `scripts/font_manager.py`
   - PPTX 임베디드 폰트 추출 및 WOFF 변환, CSS 정의 반환.
 - `scripts/shape_geometry.py`
