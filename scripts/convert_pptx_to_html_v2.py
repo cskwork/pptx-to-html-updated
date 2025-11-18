@@ -67,7 +67,8 @@ class EnhancedPPTXToHTMLV2:
             'pic': 'http://schemas.openxmlformats.org/drawingml/2006/picture',
             'p14': 'http://schemas.microsoft.com/office/powerpoint/2010/main',
             'rel': 'http://schemas.openxmlformats.org/package/2006/relationships',
-            'c': 'http://schemas.openxmlformats.org/drawingml/2006/chart'
+            'c': 'http://schemas.openxmlformats.org/drawingml/2006/chart',
+            'svg': 'http://schemas.microsoft.com/office/drawing/2016/SVG/main'
         }
 
         # 관계 파일 캐시
@@ -196,6 +197,7 @@ class EnhancedPPTXToHTMLV2:
 
         lum_mod = 1.0
         lum_off = 0.0
+        alpha = 1.0
 
         for child in list(modifier_elem):
             tag = self._strip_namespace(child.tag)
@@ -211,6 +213,8 @@ class EnhancedPPTXToHTMLV2:
                 lum_mod *= raw_val / 100000
             elif tag == 'lumOff':
                 lum_off += raw_val / 100000
+            elif tag == 'alpha':
+                alpha = raw_val / 100000
             elif tag == 'tint':
                 ratio = raw_val / 100000
                 r = self._clamp_color(r + (255 - r) * ratio)
@@ -227,6 +231,8 @@ class EnhancedPPTXToHTMLV2:
             g = self._clamp_color(g * lum_mod + 255 * lum_off)
             b = self._clamp_color(b * lum_mod + 255 * lum_off)
 
+        if alpha < 1.0:
+            return f"rgba({r}, {g}, {b}, {alpha:.2f})"
         return f"#{r:02X}{g:02X}{b:02X}"
 
     def _resolve_color(self, color_elem: ET.Element, theme_map: Dict[str, str]) -> Optional[str]:
@@ -589,6 +595,14 @@ class EnhancedPPTXToHTMLV2:
             blip = blip_fill.find('a:blip', self.ns)
             if blip is not None:
                 rel_id = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
+                
+                # Check for SVG Blip (common in newer PowerPoint versions)
+                if not rel_id:
+                    # Search deeply because svgBlip is inside extLst/ext
+                    svg_blip = blip.find('.//svg:svgBlip', self.ns)
+                    if svg_blip is not None:
+                         rel_id = svg_blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
+
                 src_rect = blip_fill.find('a:srcRect', self.ns)
                 crop = {}
                 if src_rect is not None:
@@ -1168,7 +1182,12 @@ class EnhancedPPTXToHTMLV2:
 
         body_pr = shape.find('.//a:bodyPr', self.ns)
         anchor = 't'
-        padding = {'left': 0.0, 'right': 0.0, 'top': 0.0, 'bottom': 0.0}
+        padding = {
+            'left': self.emu_to_layout_px(91440),   # 0.1 inch
+            'right': self.emu_to_layout_px(91440),  # 0.1 inch
+            'top': self.emu_to_layout_px(45720),    # 0.05 inch
+            'bottom': self.emu_to_layout_px(45720)  # 0.05 inch
+        }
         wrap_text = True
         if body_pr is not None:
             if body_pr.get('anchor'):
@@ -1179,12 +1198,14 @@ class EnhancedPPTXToHTMLV2:
                     try:
                         padding[key] = self.emu_to_layout_px(int(val))
                     except ValueError:
-                        padding[key] = 0.0
+                        pass # Keep default
             wrap_attr = body_pr.get('wrap')
             if wrap_attr and wrap_attr.lower() == 'none':
                 wrap_text = False
 
-        for p in shape.findall('.//a:p', self.ns):
+        found_paragraphs = shape.findall('.//a:p', self.ns)
+        
+        for p in found_paragraphs:
             p_pr = p.find('a:pPr', self.ns)
             paragraph_info = self._parse_paragraph_properties(p_pr, level_hint=0)
             runs = []
@@ -2030,6 +2051,9 @@ class EnhancedPPTXToHTMLV2:
             except ValueError:
                 rotation = 0.0
 
+        flip_h = xfrm.get('flipH') == '1' or xfrm.get('flipH') == 'true'
+        flip_v = xfrm.get('flipV') == '1' or xfrm.get('flipV') == 'true'
+
         pivot_x = off['x'] + (ext['width'] / 2.0)
         pivot_y = off['y'] + (ext['height'] / 2.0)
 
@@ -2041,6 +2065,8 @@ class EnhancedPPTXToHTMLV2:
             'scale_x': scale_x if scale_x != 0 else 1.0,
             'scale_y': scale_y if scale_y != 0 else 1.0,
             'rotation': rotation,
+            'flip_h': flip_h,
+            'flip_v': flip_v,
             'pivot_x': pivot_x,
             'pivot_y': pivot_y,
             'ext_width': ext['width'],
@@ -2193,6 +2219,51 @@ class EnhancedPPTXToHTMLV2:
             smartart_data['z_index'] = self._next_z_index()
             elements.append(smartart_data)
 
+    def _propagate_scaling(self, element: Dict, sx: float, sy: float):
+        """그룹 스케일링을 자식 요소의 속성(텍스트 크기 등)에 재귀적으로 적용"""
+        # Scale Text (for Shapes)
+        if 'paragraphs' in element:
+            for para in element['paragraphs']:
+                # Scale margins/spacing
+                para['space_before'] = para.get('space_before', 0) * sy
+                para['space_after'] = para.get('space_after', 0) * sy
+                para['margin_left'] = para.get('margin_left', 0) * sx
+                para['margin_right'] = para.get('margin_right', 0) * sx
+                if 'text_indent' in para: para['text_indent'] *= sx
+                
+                # Scale Runs
+                for run in para.get('runs', []):
+                    fmt = run.get('formatting', {})
+                    if 'font_size' in fmt:
+                        try:
+                            size = float(fmt['font_size'])
+                            # Use sy for font scaling as vertical height usually constrains text
+                            # Or geometric mean? Typically vertical scale matters most for lines.
+                            fmt['font_size'] = size * sy
+                        except (ValueError, TypeError):
+                            pass
+
+        # Scale Border (for Shapes/Groups)
+        if 'border' in element:
+            border = element['border']
+            if 'width' in border:
+                border['width'] *= (sx + sy) / 2
+
+        # Recurse for Groups
+        if element.get('type') == 'group':
+            for child in element.get('children', []):
+                pos = child['position']
+                # Scale child coordinates (in parent's internal space)
+                pos['x'] *= sx
+                pos['y'] *= sy
+                pos['width'] *= sx
+                pos['height'] *= sy
+                if 'pivot_x' in pos: pos['pivot_x'] *= sx
+                if 'pivot_y' in pos: pos['pivot_y'] *= sy
+                
+                # Recurse
+                self._propagate_scaling(child, sx, sy)
+
     def _process_group(self, grp_sp, zip_ref, slide_rels_path, idx, placeholder_context: Dict[str, Dict],
                        chart_extractor, shape_converter, smartart_parser,
                        animation_handler, elements: List[Dict], transform_chain: Optional[List[Dict]],
@@ -2255,8 +2326,11 @@ class EnhancedPPTXToHTMLV2:
         for child in group_children:
             pos = child['position']
             # Apply scaling and translation to map child coords to group visual coords
+            # 1. Transform Top-Level Position (Translation + Scaling)
             pos['x'] = (pos['x'] - ox) * sx
             pos['y'] = (pos['y'] - oy) * sy
+            
+            # 2. Scale Dimensions
             pos['width'] *= sx
             pos['height'] *= sy
             
@@ -2266,6 +2340,9 @@ class EnhancedPPTXToHTMLV2:
             if 'pivot_y' in pos:
                 pos['pivot_y'] = (pos['pivot_y'] - oy) * sy
 
+            # 3. Propagate Scaling to Content (Text, Nested Children)
+            self._propagate_scaling(child, sx, sy)
+
         # Create Group Element
         group_element = {
             'type': 'group',
@@ -2274,7 +2351,9 @@ class EnhancedPPTXToHTMLV2:
                 'y': group_transform['offset_y'],
                 'width': group_transform['ext_width'],
                 'height': group_transform['ext_height'],
-                'rotation': group_transform['rotation']
+                'rotation': group_transform['rotation'],
+                'flip_h': group_transform['flip_h'],
+                'flip_v': group_transform['flip_v']
             },
             'children': group_children,
             'z_index': self._next_z_index()
@@ -2793,7 +2872,7 @@ body {
     overflow: hidden;
     background-position: center;
     background-repeat: no-repeat;
-    background-size: cover;
+    background-size: 100% 100%;
 }
 
 .slide-number {
@@ -3531,8 +3610,17 @@ body {
                 f"height: {pos['height']:.2f}px",
                 f"z-index: {element.get('z_index', 1)}"
             ]
+            
+            transforms = []
             if pos.get('rotation'):
-                styles.append(f"transform: rotate({pos['rotation']:.3f}deg)")
+                transforms.append(f"rotate({pos['rotation']:.3f}deg)")
+            if pos.get('flip_h'):
+                transforms.append("scaleX(-1)")
+            if pos.get('flip_v'):
+                transforms.append("scaleY(-1)")
+            
+            if transforms:
+                styles.append(f"transform: {' '.join(transforms)}")
 
             # Render children recursively
             children_html = []

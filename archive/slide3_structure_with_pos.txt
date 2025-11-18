@@ -1,0 +1,1589 @@
+Inspecting ppt/slides/slide3.xml...
+Full tree of ppt/slides/slide3.xml:
+- spTree
+  - nvGrpSpPr
+    - cNvPr
+    - cNvGrpSpPr
+    - nvPr
+  - grpSpPr
+    - xfrm
+      - off {'x': '0', 'y': '0'}
+      - ext {'cx': '0', 'cy': '0'}
+      - chOff {'x': '0', 'y': '0'}
+      - chExt {'cx': '0', 'cy': '0'}
+  - grpSp
+    - nvGrpSpPr
+      - cNvPr
+      - cNvGrpSpPr
+      - nvPr
+    - grpSpPr
+      - xfrm
+        - off {'x': '495094', 'y': '314813'}
+        - ext {'cx': '17670271', 'cy': '9519449'}
+        - chOff {'x': '0', 'y': '0'}
+        - chExt {'cx': '23560361', 'cy': '12692599'}
+    - grpSp
+      - nvGrpSpPr
+        - cNvPr
+        - cNvGrpSpPr
+        - nvPr
+      - grpSpPr
+        - xfrm
+          - off {'x': '0', 'y': '176864'}
+          - ext {'cx': '23051293', 'cy': '12515735'}
+          - chOff {'x': '0', 'y': '0'}
+          - chExt {'cx': '4555694', 'cy': '2473521'}
+      - sp
+        - nvSpPr
+          - cNvPr
+          - cNvSpPr
+          - nvPr
+        - spPr
+          - xfrm
+            - off {'x': '0', 'y': '0'}
+            - ext {'cx': '4555694', 'cy': '2473521'}
+          - custGeom
+            - avLst
+            - gdLst
+            - ahLst
+            - cxnLst
+            - rect
+            - pathLst
+              - path
+                - moveTo
+                  - pt
+                - lnTo
+                  - pt
+                - cubicBezTo
+                  - pt
+                  - pt
+                  - pt
+                - cubicBezTo
+                  - pt
+                  - pt
+                  - pt
+                - lnTo
+                  - pt
+                - cubicBezTo
+                  - pt
+                  - pt
+                  - pt
+                - cubicBezTo
+                  - pt
+                  - pt
+                  - pt
+                - lnTo
+                  - pt
+                - cubicBezTo
+                  - pt
+                  - pt
+                  - pt
+                - cubicBezTo
+                  - pt
+                  - pt
+                  - pt
+                - lnTo
+                  - pt
+                - cubicBezTo
+                  - pt
+                  - pt
+                  - pt
+                - cubicBezTo
+                  - pt
+                  - pt
+                  - pt
+                - close
+          - solidFill
+            - srgbClr
+          - ln
+            - solidFill
+              - srgbClr
+            - prstDash
+            - round
+        - txBody
+          - bodyPr
+          - lstStyle
+          - p
+            - endParaRPr
+              - latin
+              - ea
+      - sp
+        - nvSpPr
+          - cNvPr
+          - cNvSpPr
+          - nvPr
+        - spPr
+          - xfrm
+            - off {'x': '0', 'y': '-47625'}
+            - ext {'cx': '4555694', 'cy': '2521146'}
+          - prstGeom
+            - avLst
+        - txBody
+          - bodyPr
+          - lstStyle
+          - p
+            - pPr
+              - lnSpc
+                - spcPts
+            - endParaRPr
+              - latin
+              - ea
+          - p
+            - pPr
+              - lnSpc
+                - spcPts
+            - endParaRPr
+              - latin
+              - ea
+    - grpSp
+      - nvGrpSpPr
+        - cNvPr
+        - cNvGrpSpPr
+        - nvPr
+      - grpSpPr
+        - xfrm
+          - off {'x': '22702454', 'y': '2725291'}
+          - ext {'cx': '755404', 'cy': '660978'}
+          - chOff {'x': '0', 'y': '0'}
+          - chExt {'cx': '812800', 'cy': '711200'}
+      - sp
+        - nvSpPr
+          - cNvPr
+          - cNvSpPr
+          - nvPr
+        - spPr
+          - xfrm
+            - off {'x': '48395', 'y': '71371'}
+            - ext {'cx': '716010', 'cy': '639829'}
+          - custGeom
+            - avLst
+            - gdLst
+            - ahLst
+            - cxnLst
+            - rect
+            - pathLst
+              - path
+                - moveTo
+                  - pt
+                - lnTo
+                  - pt
+                - cubicBezTo
+                  - pt
+                  - pt
+                  - pt
+                - cubicBezTo
+                  - pt
+                  - pt
+                  - pt
+                - lnTo
+                  - pt
+                - cubicBezTo
+                  - pt
+                  - pt
+                  - pt
+                - cubicBezTo
+                  - pt
+                  - pt
+                  - pt
+                - lnTo
+                  - pt
+                - cubicBezTo
+                  - pt
+                  - pt
+                  - pt
+                - cubicBezTo
+                  - pt
+                  - pt
+                  - pt
+                - close
+          - solidFill
+            - srgbClr
+          - ln
+            - solidFill
+              - srgbClr
+            - prstDash
+            - miter
+        - txBody
+          - bodyPr
+          - lstStyle
+          - p
+            - endParaRPr
+              - latin
+              - ea
+      - sp
+        - nvSpPr
+          - cNvPr
+          - cNvSpPr
+          - nvPr
+        - spPr
+          - xfrm
+            - off {'x': '127000', 'y': '282575'}
+            - ext {'cx': '558800', 'cy': '377825'}
+          - prstGeom
+            - avLst
+        - txBody
+          - bodyPr
+          - lstStyle
+          - p
+            - pPr
+              - lnSpc
+                - spcPts
+            - endParaRPr
+              - latin
+              - ea
+    - grpSp
+      - nvGrpSpPr
+        - cNvPr
+        - cNvGrpSpPr
+        - nvPr
+      - grpSpPr
+        - xfrm
+          - off {'x': '3984779', 'y': '0'}
+          - ext {'cx': '405099', 'cy': '405099'}
+          - chOff {'x': '0', 'y': '0'}
+          - chExt {'cx': '812800', 'cy': '812800'}
+      - sp
+        - nvSpPr
+          - cNvPr
+          - cNvSpPr
+          - nvPr
+        - spPr
+          - xfrm
+            - off {'x': '0', 'y': '0'}
+            - ext {'cx': '812800', 'cy': '812800'}
+          - custGeom
+            - avLst
+            - gdLst
+            - ahLst
+            - cxnLst
+            - rect
+            - pathLst
+              - path
+                - moveTo
+                  - pt
+                - cubicBezTo
+                  - pt
+                  - pt
+                  - pt
+                - cubicBezTo
+                  - pt
+                  - pt
+                  - pt
+                - cubicBezTo
+                  - pt
+                  - pt
+                  - pt
+                - cubicBezTo
+                  - pt
+                  - pt
+                  - pt
+                - lnTo
+                  - pt
+                - close
+          - solidFill
+            - srgbClr
+          - ln
+            - solidFill
+              - srgbClr
+            - prstDash
+            - miter
+        - txBody
+          - bodyPr
+          - lstStyle
+          - p
+            - endParaRPr
+              - latin
+              - ea
+      - sp
+        - nvSpPr
+          - cNvPr
+          - cNvSpPr
+          - nvPr
+        - spPr
+          - xfrm
+            - off {'x': '76200', 'y': '28575'}
+            - ext {'cx': '660400', 'cy': '708025'}
+          - prstGeom
+            - avLst
+        - txBody
+          - bodyPr
+          - lstStyle
+          - p
+            - pPr
+              - lnSpc
+                - spcPts
+              - spcBef
+                - spcPct
+            - endParaRPr
+              - latin
+              - ea
+    - grpSp
+      - nvGrpSpPr
+        - cNvPr
+        - cNvGrpSpPr
+        - nvPr
+      - grpSpPr
+        - xfrm
+          - off {'x': '22860925', 'y': '8618152'}
+          - ext {'cx': '405099', 'cy': '405099'}
+          - chOff {'x': '0', 'y': '0'}
+          - chExt {'cx': '812800', 'cy': '812800'}
+      - sp
+        - nvSpPr
+          - cNvPr
+          - cNvSpPr
+          - nvPr
+        - spPr
+          - xfrm
+            - off {'x': '0', 'y': '0'}
+            - ext {'cx': '812800', 'cy': '812800'}
+          - custGeom
+            - avLst
+            - gdLst
+            - ahLst
+            - cxnLst
+            - rect
+            - pathLst
+              - path
+                - moveTo
+                  - pt
+                - cubicBezTo
+                  - pt
+                  - pt
+                  - pt
+                - cubicBezTo
+                  - pt
+                  - pt
+                  - pt
+                - cubicBezTo
+                  - pt
+                  - pt
+                  - pt
+                - cubicBezTo
+                  - pt
+                  - pt
+                  - pt
+                - lnTo
+                  - pt
+                - close
+          - solidFill
+            - srgbClr
+          - ln
+            - solidFill
+              - srgbClr
+            - prstDash
+            - miter
+        - txBody
+          - bodyPr
+          - lstStyle
+          - p
+            - endParaRPr
+              - latin
+              - ea
+      - sp
+        - nvSpPr
+          - cNvPr
+          - cNvSpPr
+          - nvPr
+        - spPr
+          - xfrm
+            - off {'x': '76200', 'y': '28575'}
+            - ext {'cx': '660400', 'cy': '708025'}
+          - prstGeom
+            - avLst
+        - txBody
+          - bodyPr
+          - lstStyle
+          - p
+            - pPr
+              - lnSpc
+                - spcPts
+              - spcBef
+                - spcPct
+            - endParaRPr
+              - latin
+              - ea
+  - sp
+    - nvSpPr
+      - cNvPr
+      - cNvSpPr
+      - nvPr
+    - spPr
+      - xfrm
+        - off {'x': '1221075', 'y': '3812773'}
+        - ext {'cx': '14790908', 'cy': '0'}
+      - prstGeom
+        - avLst
+      - ln
+        - solidFill
+          - srgbClr
+        - prstDash
+        - headEnd
+        - tailEnd
+    - txBody
+      - bodyPr
+      - lstStyle
+      - p
+        - endParaRPr
+          - latin
+          - ea
+  - grpSp
+    - nvGrpSpPr
+      - cNvPr
+      - cNvGrpSpPr
+      - nvPr
+    - grpSpPr
+      - xfrm
+        - off {'x': '1221075', 'y': '4150084'}
+        - ext {'cx': '4797768', 'cy': '5191883'}
+        - chOff {'x': '0', 'y': '0'}
+        - chExt {'cx': '6397024', 'cy': '6922511'}
+    - sp
+      - nvSpPr
+        - cNvPr
+        - cNvSpPr
+        - nvPr
+      - spPr
+        - xfrm
+          - off {'x': '0', 'y': '0'}
+          - ext {'cx': '6397024', 'cy': '6922511'}
+        - custGeom
+          - avLst
+          - gdLst
+          - ahLst
+          - cxnLst
+          - rect
+          - pathLst
+            - path
+              - moveTo
+                - pt
+              - lnTo
+                - pt
+              - lnTo
+                - pt
+              - lnTo
+                - pt
+              - lnTo
+                - pt
+              - close
+        - blipFill
+          - blip
+          - stretch
+            - fillRect
+      - txBody
+        - bodyPr
+        - lstStyle
+        - p
+          - endParaRPr
+            - latin
+            - ea
+    - sp
+      - nvSpPr
+        - cNvPr
+        - cNvSpPr
+        - nvPr
+      - spPr
+        - xfrm
+          - off {'x': '0', 'y': '1527106'}
+          - ext {'cx': '1695146', 'cy': '5395405'}
+        - custGeom
+          - avLst
+          - gdLst
+          - ahLst
+          - cxnLst
+          - rect
+          - pathLst
+            - path
+              - moveTo
+                - pt
+              - lnTo
+                - pt
+              - lnTo
+                - pt
+              - lnTo
+                - pt
+              - lnTo
+                - pt
+              - close
+        - blipFill
+          - blip
+          - stretch
+            - fillRect
+      - txBody
+        - bodyPr
+        - lstStyle
+        - p
+          - endParaRPr
+            - latin
+            - ea
+  - grpSp
+    - nvGrpSpPr
+      - cNvPr
+      - cNvGrpSpPr
+      - nvPr
+    - grpSpPr
+      - xfrm
+        - off {'x': '2587127', 'y': '4976945'}
+        - ext {'cx': '3277518', 'cy': '989284'}
+        - chOff {'x': '0', 'y': '0'}
+        - chExt {'cx': '863214', 'cy': '260552'}
+    - sp
+      - nvSpPr
+        - cNvPr
+        - cNvSpPr
+        - nvPr
+      - spPr
+        - xfrm
+          - off {'x': '0', 'y': '0'}
+          - ext {'cx': '863214', 'cy': '260552'}
+        - custGeom
+          - avLst
+          - gdLst
+          - ahLst
+          - cxnLst
+          - rect
+          - pathLst
+            - path
+              - moveTo
+                - pt
+              - lnTo
+                - pt
+              - cubicBezTo
+                - pt
+                - pt
+                - pt
+              - lnTo
+                - pt
+              - cubicBezTo
+                - pt
+                - pt
+                - pt
+              - lnTo
+                - pt
+              - cubicBezTo
+                - pt
+                - pt
+                - pt
+              - lnTo
+                - pt
+              - cubicBezTo
+                - pt
+                - pt
+                - pt
+              - close
+        - solidFill
+          - srgbClr
+            - alpha
+        - ln
+          - solidFill
+            - srgbClr
+          - prstDash
+          - round
+      - txBody
+        - bodyPr
+        - lstStyle
+        - p
+          - endParaRPr
+            - latin
+            - ea
+    - sp
+      - nvSpPr
+        - cNvPr
+        - cNvSpPr
+        - nvPr
+      - spPr
+        - xfrm
+          - off {'x': '0', 'y': '-47625'}
+          - ext {'cx': '863214', 'cy': '308177'}
+        - prstGeom
+          - avLst
+      - txBody
+        - bodyPr
+        - lstStyle
+        - p
+          - pPr
+            - lnSpc
+              - spcPts
+          - endParaRPr
+            - latin
+            - ea
+  - sp
+    - nvSpPr
+      - cNvPr
+      - cNvSpPr
+      - nvPr
+    - spPr
+      - xfrm
+        - off {'x': '5848721', 'y': '5452537'}
+        - ext {'cx': '897256', 'cy': '19050'}
+      - prstGeom
+        - avLst
+      - ln
+        - solidFill
+          - srgbClr
+        - prstDash
+        - headEnd
+        - tailEnd
+    - txBody
+      - bodyPr
+      - lstStyle
+      - p
+        - endParaRPr
+          - latin
+          - ea
+  - grpSp
+    - nvGrpSpPr
+      - cNvPr
+      - cNvGrpSpPr
+      - nvPr
+    - grpSpPr
+      - xfrm
+        - off {'x': '6819994', 'y': '4092248'}
+        - ext {'cx': '6551911', 'cy': '5249718'}
+        - chOff {'x': '0', 'y': '0'}
+        - chExt {'cx': '8735881', 'cy': '6999624'}
+    - sp
+      - nvSpPr
+        - cNvPr
+        - cNvSpPr
+        - nvPr
+      - spPr
+        - xfrm
+          - off {'x': '0', 'y': '0'}
+          - ext {'cx': '8735881', 'cy': '6999624'}
+        - custGeom
+          - avLst
+          - gdLst
+          - ahLst
+          - cxnLst
+          - rect
+          - pathLst
+            - path
+              - moveTo
+                - pt
+              - lnTo
+                - pt
+              - lnTo
+                - pt
+              - lnTo
+                - pt
+              - lnTo
+                - pt
+              - close
+        - blipFill
+          - blip
+          - stretch
+            - fillRect
+        - ln
+          - solidFill
+            - srgbClr
+          - prstDash
+          - round
+      - txBody
+        - bodyPr
+        - lstStyle
+        - p
+          - endParaRPr
+            - latin
+            - ea
+    - sp
+      - nvSpPr
+        - cNvPr
+        - cNvSpPr
+        - nvPr
+      - spPr
+        - xfrm
+          - off {'x': '6269620', 'y': '554705'}
+          - ext {'cx': '2314770', 'cy': '3215425'}
+        - custGeom
+          - avLst
+          - gdLst
+          - ahLst
+          - cxnLst
+          - rect
+          - pathLst
+            - path
+              - moveTo
+                - pt
+              - lnTo
+                - pt
+              - lnTo
+                - pt
+              - lnTo
+                - pt
+              - lnTo
+                - pt
+              - close
+        - blipFill
+          - blip
+          - stretch
+            - fillRect
+      - txBody
+        - bodyPr
+        - lstStyle
+        - p
+          - endParaRPr
+            - latin
+            - ea
+  - sp
+    - nvSpPr
+      - cNvPr
+      - cNvSpPr
+      - nvPr
+    - spPr
+      - xfrm
+        - off {'x': '13573201', 'y': '4609468'}
+        - ext {'cx': '3847338', 'cy': '4114800'}
+      - custGeom
+        - avLst
+        - gdLst
+        - ahLst
+        - cxnLst
+        - rect
+        - pathLst
+          - path
+            - moveTo
+              - pt
+            - lnTo
+              - pt
+            - lnTo
+              - pt
+            - lnTo
+              - pt
+            - lnTo
+              - pt
+            - close
+      - blipFill
+        - blip
+          - extLst
+            - ext {'uri': '{96DAC541-7B7A-43D3-8B79-37D633B846F1}'}
+              - svgBlip
+        - stretch
+          - fillRect
+    - txBody
+      - bodyPr
+      - lstStyle
+      - p
+        - endParaRPr
+          - latin
+          - ea
+  - sp
+    - nvSpPr
+      - cNvPr
+      - cNvSpPr
+      - nvPr
+    - spPr
+      - xfrm
+        - off {'x': '15265256', 'y': '4389472'}
+        - ext {'cx': '640733', 'cy': '876215'}
+      - custGeom
+        - avLst
+        - gdLst
+        - ahLst
+        - cxnLst
+        - rect
+        - pathLst
+          - path
+            - moveTo
+              - pt
+            - lnTo
+              - pt
+            - lnTo
+              - pt
+            - lnTo
+              - pt
+            - lnTo
+              - pt
+            - close
+      - blipFill
+        - blip
+          - extLst
+            - ext {'uri': '{96DAC541-7B7A-43D3-8B79-37D633B846F1}'}
+              - svgBlip
+        - stretch
+          - fillRect
+    - txBody
+      - bodyPr
+      - lstStyle
+      - p
+        - endParaRPr
+          - latin
+          - ea
+  - sp
+    - nvSpPr
+      - cNvPr
+      - cNvSpPr
+      - nvPr
+    - spPr
+      - xfrm
+        - off {'x': '1221075', 'y': '2502895'}
+        - ext {'cx': '15032767', 'cy': '1115305'}
+      - prstGeom
+        - avLst
+    - txBody
+      - bodyPr
+        - spAutoFit
+      - lstStyle
+      - p
+        - pPr
+          - lnSpc
+            - spcPts
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '  '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '엔트리의'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ' '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '인공지능'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ' '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '블록은'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ' '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '이미지'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ' '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '인식'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ', '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '음성'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ' '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '인식'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ', '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '텍스트'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ' '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '분석'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ' 및 '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '기계'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ' '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '학습과'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ' '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '같은'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ' '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '기능을'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ' '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '프로그램에'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ' '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '쉽게'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ' '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '활용할'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ' 수 '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '있게'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ' 해 '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '줘요'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '. '
+  - sp
+    - nvSpPr
+      - cNvPr
+      - cNvSpPr
+      - nvPr
+    - spPr
+      - xfrm
+        - off {'x': '13811334', 'y': '6199625'}
+        - ext {'cx': '3371071', 'cy': '1748556'}
+      - prstGeom
+        - avLst
+    - txBody
+      - bodyPr
+        - spAutoFit
+      - lstStyle
+      - p
+        - pPr
+          - lnSpc
+            - spcPts
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ' '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ' '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '번역'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ', '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '읽어주기'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ', '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '비디오'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ' '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '감지'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ', '
+      - p
+        - pPr
+          - lnSpc
+            - spcPts
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '오디오'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ' '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '감지'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ' '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '등의'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ' '
+      - p
+        - pPr
+          - lnSpc
+            - spcPts
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '블록'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ' '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '모음을'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ' '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '선택하면'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ' '
+      - p
+        - pPr
+          - lnSpc
+            - spcPts
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '사용할'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ' 수 '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '있는'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ' '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '블록들을'
+        - endParaRPr
+          - solidFill
+            - srgbClr
+          - latin
+          - ea
+          - cs
+          - sym
+      - p
+        - pPr
+          - lnSpc
+            - spcPts
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '모두'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ' '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '불러올'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: ' 수 '
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '있어요'
+        - r
+          - rPr
+            - solidFill
+              - srgbClr
+            - latin
+            - ea
+            - cs
+            - sym
+          - t: '!'
+  - grpSp
+    - nvGrpSpPr
+      - cNvPr
+      - cNvGrpSpPr
+      - nvPr
+    - grpSpPr
+      - xfrm
+        - off {'x': '846993', 'y': '1028700'}
+        - ext {'cx': '8878610', 'cy': '1111461'}
+        - chOff {'x': '0', 'y': '0'}
+        - chExt {'cx': '11838147', 'cy': '1481948'}
+    - sp
+      - nvSpPr
+        - cNvPr
+        - cNvSpPr
+        - nvPr
+      - spPr
+        - xfrm
+          - off {'x': '0', 'y': '0'}
+          - ext {'cx': '1552203', 'cy': '1481948'}
+        - custGeom
+          - avLst
+          - gdLst
+          - ahLst
+          - cxnLst
+          - rect
+          - pathLst
+            - path
+              - moveTo
+                - pt
+              - lnTo
+                - pt
+              - lnTo
+                - pt
+              - lnTo
+                - pt
+              - lnTo
+                - pt
+              - close
+        - blipFill
+          - blip
+          - stretch
+            - fillRect
+      - txBody
+        - bodyPr
+        - lstStyle
+        - p
+          - endParaRPr
+            - latin
+            - ea
+    - sp
+      - nvSpPr
+        - cNvPr
+        - cNvSpPr
+        - nvPr
+      - spPr
+        - xfrm
+          - off {'x': '1877253', 'y': '400289'}
+          - ext {'cx': '9960894', 'cy': '1031223'}
+        - prstGeom
+          - avLst
+      - txBody
+        - bodyPr
+          - spAutoFit
+        - lstStyle
+        - p
+          - pPr
+            - lnSpc
+              - spcPts
+          - r
+            - rPr
+              - solidFill
+                - srgbClr
+              - latin
+              - ea
+              - cs
+              - sym
+            - t: '엔트리'
+          - r
+            - rPr
+              - solidFill
+                - srgbClr
+              - latin
+              - ea
+              - cs
+              - sym
+            - t: '의 인공지능 블록 '

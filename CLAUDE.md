@@ -245,6 +245,7 @@ new Chart(document.getElementById('chart_1'), {
 3. **Implement graceful degradation** with try/except
 4. **Update statistics** in `ConversionLogger` if trackable
 5. **Document** in both SKILL.md and README.md
+6. **Key Insights** - maintain essential insights in CLAUDE.md
 
 ### Error Handling Levels
 
@@ -333,3 +334,17 @@ Chart.js 4.4.1 loads from CDN in generated HTML (no Python dependency).
 ## Python Version
 
 Requires Python 3.7+. Uses standard library heavily (zipfile, xml.etree, pathlib).
+
+<insight>
+**SVG Transform & Overflow Handling**:
+- When converting shapes (especially lines/connectors), PowerPoint rotations are around the center of the bounding box. Always use `transform-origin: center` (CSS default) or explicitly set it, avoiding `top left`.
+- Flipped shapes (flipH/flipV) must be handled via CSS transforms (`scaleX(-1)`, `scaleY(-1)`) to preserve directional semantics (e.g., arrows).
+- Horizontal/Vertical lines often have 0 height or width. To ensure they render, SVG containers must use `overflow: visible` and strokes must be allowed to extend beyond the viewBox.
+
+**Text & Layout Precision**:
+- PowerPoint default text padding (internal margins) is **0.1" (left/right)** and **0.05" (top/bottom)**. Ignoring these and defaulting to 0px causes text misalignment.
+- Slide background scaling should use `background-size: 100% 100%` instead of `cover` to ensure exact fit without cropping, preserving alignment with absolute-positioned foreground elements.
+
+**Group Shape Transformations**:
+- Group flips (`flipH`, `flipV`) must be applied to the group container itself using CSS `scaleX(-1)` or `scaleY(-1)`. This correctly flips and positions all children within the group context without needing complex individual coordinate re-calculation for every child.
+</insight>
