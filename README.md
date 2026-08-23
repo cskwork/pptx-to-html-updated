@@ -1,196 +1,120 @@
-# PPTX to HTML Converter — Phase 2 (Production Ready)
+# PPTX to HTML Converter
 
-Convert PowerPoint presentations (.pptx) into faithful, self-contained HTML bundles — parsed straight from the OOXML source, no PowerPoint required.
+Turn a PowerPoint deck into HTML you can open in any browser. Point the converter at a `.pptx` file and you get back a small folder of HTML, CSS and JavaScript that looks and behaves like the original: same text styling, charts, media, animations, even the fonts embedded in the file. It reads the `.pptx` directly (it's just a ZIP of XML), so PowerPoint itself is never needed.
 
-🌐 **[Live site & docs](https://cskwork.github.io/pptx-to-html-updated/)** · [Quick Start](#quick-start) · [Architecture](docs/architecture.md) · [Changelog](docs/changelog.md)
+Phase 2, production ready. Python 3.7+.
 
-## How It Works
+🌐 **[Live site](https://cskwork.github.io/pptx-to-html-updated/)** · [Architecture](docs/architecture.md) · [Changelog](docs/changelog.md)
 
-The converter reads the .pptx ZIP directly (`zipfile` + `ElementTree`) and translates each slide's DrawingML into an HTML/CSS/JS bundle:
-
-- **Pixel-accurate layout** — EMU coordinates converted to percentage-based positioning, so slides scale responsively while keeping exact placement, rotation, layering (z-order), and aspect ratio.
-- **Theme & inheritance aware** — theme color palettes (with lumMod/alpha modifiers), slide backgrounds resolved through the slide → layout → master chain, and placeholder geometry/inheritance pulled from layouts and masters.
-- **Group shapes** — nested group transforms (offset, scale, rotation) are flattened correctly onto child elements.
-
-## Quick Start
+## Quick start
 
 ```bash
-# Install dependencies
 pip install -r requirements.txt
-
-# Convert (150 DPI by default)
-python scripts/convert_pptx_to_html_v2.py presentation.pptx output/
-
-# Custom DPI
-python scripts/convert_pptx_to_html_v2.py presentation.pptx output/ 300
+python scripts/convert_pptx_to_html_v2.py deck.pptx output/
 ```
 
-Shell wrappers `convert.sh` (macOS/Linux) and `convert.bat` (Windows) do the same with filename quoting handled.
+Open `output/deck.html` in a browser and you're done. Image quality defaults to 150 DPI; add a third argument to change it:
 
-> **Requirements:** Python 3.7+. The only hard dependency is `fonttools` (embedded font conversion). `requirements.txt` also declares `python-pptx`/`openpyxl`, but the v2 pipeline parses OOXML directly and does not import them.
+```bash
+python scripts/convert_pptx_to_html_v2.py deck.pptx output/ 300
+```
 
-### Python API
+If you'd rather call it from code:
 
 ```python
 from scripts.convert_pptx_to_html_v2 import EnhancedPPTXToHTMLV2
 
-converter = EnhancedPPTXToHTMLV2(
-    'presentation.pptx',
-    output_dir='./output',
-    dpi=150,
-    log_file='./output/conversion.log',
-)
-
-html_path = converter.convert()   # returns Path to the HTML file, or None on failure
+converter = EnhancedPPTXToHTMLV2("deck.pptx", output_dir="output", dpi=150)
+html_path = converter.convert()   # path to the HTML file, or None if something broke
 ```
 
-## What Gets Converted
+There are also `convert.sh` and `convert.bat` wrappers that handle filename quoting for you.
 
-| Category | Support |
-|---|---|
-| Text formatting | ✅ Font family/size/color, bold/italic/underline, alignment, bullets & numbered lists (incl. roman/alpha formats), indentation, line spacing, mixed formatting per run |
-| Shapes | ✅ Solid & multi-stop gradient fills, borders with dash patterns, rotation, z-order |
-| Custom geometry | ✅ `custGeom` paths → SVG (`moveTo`/`lnTo`/bezier/`close`), plus 24 preset shapes (rect, ellipse, polygons, star, 9 arrow variants, flowchart process/decision/data/terminator/document) |
-| Charts | ✅ 12 PowerPoint chart types → live Chart.js renderings (see below) |
-| Tables | ✅ Structure, cell fills, cell borders, text formatting |
-| Images | ✅ Extracted at 150 DPI (configurable), exact placement |
-| Video / Audio | ✅ Extracted to `assets/`, embedded HTML5 players |
-| Hyperlinks | ✅ Text-level and shape-level, open in new tab |
-| Backgrounds | ✅ Solid & gradient, resolved through slide → layout → master |
-| Embedded fonts | ✅ ODTTF de-obfuscation → WOFF conversion → `@font-face` (Regular/Bold/Italic/BoldItalic) |
-| Animations | ✅ Entrance effects (fade, fly, zoom, grow, bounce, swivel, wheel…) → CSS keyframes + JS controller, replayed on slide change |
-| Shadows | ✅ Outer/inner shadows → CSS `box-shadow` |
-| Reflections | ⚠️ Mapped to `-webkit-box-reflect` (Chromium/Safari only) |
-| SmartArt | ⚠️ Text extraction only — rendered as a labeled text outline, layout not reconstructed |
+## What survives the trip
 
-### Charts
+Most of a slide comes through intact. Text keeps its font, size, color, bold/italic/underline, alignment, bullets and numbered lists. Shapes keep their position, size, rotation, fills (solid and gradient) and borders. Images export at your chosen DPI, video and audio play inline with HTML5 players, tables keep their borders and cell styling, and hyperlinks stay clickable whether they're on text or on a whole shape. Backgrounds resolve the way PowerPoint resolves them: slide first, then layout, then master, with theme colors carried over.
 
-All of these are extracted from the chart XML parts (cached series values, names, and colors) and rendered as interactive [Chart.js](https://www.chartjs.org/) canvases:
+A few things deserve their own mention:
 
-bar (2D/3D) · line (2D/3D) · pie (2D/3D) · doughnut · area (2D/3D, as filled line) · scatter · radar · bubble
+**Charts become live Chart.js canvases**, not screenshots. Bar, line, pie, doughnut, area, scatter, radar and bubble all work, including the 3D variants. Chart.js loads from a CDN, so viewing charts needs an internet connection.
 
-Chart.js loads from a CDN in the generated HTML, so charts need network access at view time.
+**Custom shapes convert to SVG.** About two dozen common presets (arrows, flowchart blocks, polygons, a star) have hand-drawn paths, and freeform geometry is traced into SVG paths. Anything more exotic falls back to a plain rectangle.
 
-### Embedded Fonts
+**Embedded fonts are extracted and re-served as WOFF webfonts**, so your typefaces survive on machines that don't have them. Decks without embedded fonts fall back to web-safe stacks.
 
-If the presentation embeds fonts (PowerPoint's "Embed fonts in the file" option), the converter:
+**Entrance animations** (fade, fly, zoom, bounce and friends) become CSS keyframes that replay each time the slide appears.
 
-1. Reads `ppt/fontTable.xml` and its relationships,
-2. De-obfuscates ODTTF font data using the embed GUID key,
-3. Converts each variant to WOFF with fontTools,
-4. Emits `@font-face` rules (with `font-display: swap`) pointing at `fonts/`.
+**SmartArt is text-only.** You get the words in a labeled outline, not the diagram layout.
 
-Presentations without embedded fonts fall back to web-safe font stacks.
+## What doesn't work yet
 
-## Output Structure
+- Macros/VBA, slide notes, and transition sounds are ignored
+- Connectors and uncommon preset shapes render as rectangles
+- `arcTo` curves inside custom paths are skipped (logged as warnings)
+- `wipe` and `split` entrance effects map to keyframes that aren't generated yet, so affected elements may stay hidden; re-save the deck without those effects as a workaround
+- Reflections render in Chromium and Safari, not Firefox
+
+## What you get
 
 ```
-output-directory/
-├── presentation.html        # Main presentation file
-├── presentation.css         # Styles (slides, animations, viewer chrome)
-├── presentation.js          # Viewer logic (navigation, animations, charts)
-├── presentation_report.md   # Detailed conversion report (counts, durations, warnings)
-├── conversion.log           # Full conversion log
-├── assets/                  # Extracted images, videos, audio
-└── fonts/                   # Converted embedded fonts (when present)
+output/
+├── deck.html            # the presentation
+├── deck.css             # styles: slides, animations, viewer chrome
+├── deck.js              # navigation, animation replay, chart rendering
+├── deck_report.md       # what was converted, counts and warnings
+├── conversion.log       # full log
+├── assets/              # images, videos, audio pulled from the deck
+└── fonts/               # converted embedded fonts, when present
 ```
 
-### Viewer Features
+The bundle ships with a small viewer: arrow keys and on-screen buttons to navigate, a progress bar, and scaling that fits any screen size.
 
-The generated bundle ships with a slide viewer:
+## Good to know
 
-- Keyboard navigation (arrow keys, space) and on-screen controls
-- Progress bar and slide numbering
-- Per-slide animation replay
-- Responsive scaling for desktop and mobile
-
-## CLI Reference
-
-```
-python scripts/convert_pptx_to_html_v2.py <input.pptx> [output_directory] [dpi]
-```
-
-| Argument | Required | Default |
-|---|---|---|
-| `input.pptx` | yes | — |
-| `output_directory` | no | alongside the input file |
-| `dpi` | no | `150` |
-
-## Known Limitations
-
-- **Macros/VBA, slide notes, transition sounds** — never converted.
-- **SmartArt** — text content only; the visual diagram layout is not reconstructed.
-- **`arcTo` segments** in custom geometry are skipped (logged as approximations).
-- **Connectors and uncommon preset shapes** fall back to a plain rectangle.
-- **`wipe`/`split` animation effects** currently map to keyframes that aren't generated — affected elements may stay hidden; re-save without those effects as a workaround.
-- **Reflections** render only in WebKit-based browsers.
-- **Charts** require Chart.js CDN access at view time.
-
-## Performance
-
-Typical behavior on a modern machine:
-
-- ~1–2 seconds per slide
-- ~100 MB memory for standard decks
-- HTML 50–300 KB plus assets proportional to media content
-- Handles decks of 100+ slides
+- Expect roughly 1–2 seconds per slide and around 100 MB of memory for typical decks.
+- The only library actually required is `fonttools` (embedded font conversion). `requirements.txt` also lists `python-pptx` and `openpyxl`, but the converter parses the OOXML itself and never imports them.
+- One broken shape won't kill a conversion. Failures are logged per element and summarized in the report file.
 
 ## Troubleshooting
 
-**Filenames with special characters**
+**Filenames with spaces or non-Latin characters?** Quote them:
 ```bash
-# macOS/Linux — quote the filename
-./convert.sh "presentation (with spaces).pptx"
+./convert.sh "deck (final).pptx"
 ./convert.sh "(한글) 파일명.pptx"
-
-# Windows — quote in Command Prompt or PowerShell
-convert.bat "presentation (with spaces).pptx"
-
-# Or call Python directly
-python scripts/convert_pptx_to_html_v2.py "(한글) 파일명.pptx" output/
 ```
 
-**Charts not rendering** — the generated HTML loads Chart.js from a CDN; check network access and the browser console.
+**Charts blank?** They need the Chart.js CDN at view time. Check the network and the browser console.
 
-**Custom shapes appear as rectangles** — uncommon presets and skipped `arcTo` segments fall back to rectangles; check `conversion.log` for warnings.
+**Fonts look wrong?** The deck probably doesn't embed its fonts. Embed them in PowerPoint before converting.
 
-**Fonts look different** — the source deck likely doesn't embed its fonts; the converter falls back to web-safe stacks. Embed fonts in PowerPoint before converting to preserve typefaces.
+**Big deck running out of memory?** Lower the DPI (`96` works fine for screens) or convert in batches.
 
-**High memory usage on large decks** — lower the DPI (`python … presentation.pptx output/ 96`) or convert in batches.
-
-## Project Structure
+## Project layout
 
 ```
 pptx-to-html-updated/
 ├── scripts/
-│   ├── convert_pptx_to_html_v2.py   # Main converter + HTML/CSS/JS bundle generator
-│   ├── chart_extractor.py           # Chart XML → Chart.js configs
-│   ├── shape_geometry.py            # Preset + custom geometry → SVG paths
+│   ├── convert_pptx_to_html_v2.py   # main converter, generates the HTML/CSS/JS bundle
+│   ├── chart_extractor.py           # chart XML → Chart.js configs
+│   ├── shape_geometry.py            # preset + custom geometry → SVG paths
 │   ├── smartart_parser.py           # SmartArt text extraction
-│   ├── animation_handler.py         # Animations / shadows / reflections → CSS
-│   ├── font_manager.py              # Embedded fonts (ODTTF) → WOFF + @font-face
-│   └── logger.py                    # Logging, summary, markdown report
-├── docs/                            # Architecture docs + landing page (GitHub Pages)
-├── convert.sh / convert.bat         # Platform wrappers
-├── QUICKSTART.md                    # Fast-path setup guide
-├── SKILL.md                         # Agent-skill manifest (Claude Code & friends)
-└── README.md                        # This file
+│   ├── animation_handler.py         # animations, shadows, reflections → CSS
+│   ├── font_manager.py              # embedded fonts (ODTTF) → WOFF + @font-face
+│   └── logger.py                    # logging, summary, markdown report
+├── docs/                            # architecture notes + this project's website
+├── convert.sh / convert.bat         # platform wrappers
+├── QUICKSTART.md
+├── SKILL.md                         # agent-skill manifest (Claude Code & friends)
+└── README.md
 ```
 
-## Using as an Agent Skill
+## Using it as an agent skill
 
-The repo ships a `SKILL.md` manifest, so coding agents that discover skills (Claude Code et al.) can pick it up directly: point the agent at this repository, and "convert this .pptx to HTML" dispatches the v2 converter with no extra setup.
+The repo ships a `SKILL.md`, so coding agents that discover skills (Claude Code et al.) can pick it up directly: point the agent at this repository and ask it to convert a deck. No extra setup.
 
-## Documentation
+## More docs
 
-- **🌐 Landing page** — [cskwork.github.io/pptx-to-html-updated](https://cskwork.github.io/pptx-to-html-updated/)
-- **[SKILL.md](SKILL.md)** — agent-facing usage and triggers
-- **[docs/architecture.md](docs/architecture.md)** — technical architecture
+- **[Landing page](https://cskwork.github.io/pptx-to-html-updated/)** — feature tour
+- **[SKILL.md](SKILL.md)** — agent-facing usage
+- **[docs/architecture.md](docs/architecture.md)** — how the pipeline works
 - **[docs/changelog.md](docs/changelog.md)** — version history
-
-## Contributing
-
-1. Keep the modular pipeline (extractor modules stay independent).
-2. Log comprehensively — the report/log files are the debugging surface.
-3. Handle failures per-element, never per-deck (one bad shape shouldn't kill a conversion).
-4. Update `docs/changelog.md` with every change.
