@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Phase 2.0.1] - 2026-08-23
+
+### 📝 Patch Release: Documentation & Project Site
+
+#### Changed - README Rewritten from Code Audit
+- **Verified capability inventory**: every feature claim now traces to the implementation
+  - Charts: 12 PowerPoint chart types mapped to Chart.js (bar/line/pie/doughnut/area incl. 3D variants, scatter, radar, bubble)
+  - Embedded fonts: documented as supported (ODTTF de-obfuscation → WOFF → `@font-face`, Regular/Bold/Italic/BoldItalic) — previously listed as unsupported
+  - Output structure corrected: HTML + CSS + JS bundle with `assets/` and `fonts/` folders, conversion report and log
+- **Removed broken references**: legacy Phase 1 script (not in repository), `tests/` directory (does not exist), LICENSE file (absent)
+- **Corrected dependencies**: v2 pipeline parses OOXML directly (`zipfile` + `ElementTree`); only `fonttools` is imported — `python-pptx`/`openpyxl` remain declared but unused
+- **Honest limitations**: `arcTo` segments skipped, connectors fall back to rectangles, `wipe`/`split` animation keyframes not generated, reflections WebKit-only
+
+#### Added - Landing Page & GitHub Pages
+- **Project site** at [cskwork.github.io/pptx-to-html-updated](https://cskwork.github.io/pptx-to-html-updated/) (served from `docs/`)
+- **Single-file landing page**: hero, feature grid (9 cards), verified stats, quick start with copy buttons, phase comparison table, docs links
+- **Design quality gate**: passes `impeccable detect` with zero anti-patterns (WCAG AA contrast, ≥11px functional text, distinct type ramp, Archivo/Public Sans/JetBrains Mono pairing)
+- **Accessibility**: semantic landmarks, skip link, focus-visible styles, reduced-motion support
+
+#### Changed - Repository Metadata
+- **About**: description updated, homepage linked to the project site
+
+#### Fixed - Documentation Accuracy
+- Quick Start commands match the actual CLI (`<input.pptx> [output_directory] [dpi]`, default 150 DPI)
+- Python API example matches the real constructor signature
+
+---
+
 ## [Phase 2.0.0] - 2025-01-21
 
 ### 🚀 Major Release: Production-Ready Quality
