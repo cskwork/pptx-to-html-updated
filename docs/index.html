@@ -1,0 +1,1396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PPTX to HTML — Faithful HTML from PowerPoint, 98%+ visual fidelity</title>
+  <meta name="description" content="A Python agent skill that converts PowerPoint .pptx presentations into faithful HTML bundles with 98%+ visual fidelity. Charts, shapes, animations, embedded fonts, media and effects included.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0a0a0c">
+  <link rel="canonical" href="https://cskwork.github.io/pptx-to-html-updated/">
+
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="PPTX to HTML — Faithful HTML from PowerPoint">
+  <meta property="og:description" content="Convert PowerPoint presentations into faithful HTML bundles with 98%+ visual fidelity.">
+  <meta property="og:url" content="https://cskwork.github.io/pptx-to-html-updated/">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="PPTX to HTML — Faithful HTML from PowerPoint">
+  <meta name="twitter:description" content="Convert PowerPoint presentations into faithful HTML bundles with 98%+ visual fidelity.">
+
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23E64A19'/%3E%3Cpath d='M11 9.5l13 6.5-13 6.5z' fill='white'/%3E%3C/svg%3E">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <noscript><style>.reveal{opacity:1 !important;transform:none !important}</style></noscript>
+
+  <style>
+    /* ============================================================
+       Design tokens
+       ============================================================ */
+    :root {
+      --bg: #0a0a0c;
+      --surface: #121217;
+      --surface-2: #16161c;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.15);
+      --text: #f2f0ed;
+      --text-muted: #a7a29b;
+      --text-faint: #918b83;
+      --accent: #ff6a3c;
+      --accent-bright: #ff8a5c;
+      --accent-deep: #e64a19;
+      --accent-soft: rgba(255, 106, 60, 0.12);
+      --accent-border: rgba(255, 106, 60, 0.35);
+      --green: #5ad08a;
+      --font-display: 'Archivo', 'Public Sans', system-ui, sans-serif;
+      --font-body: 'Public Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+      --font-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+      --radius: 14px;
+      --header-h: 64px;
+      --container: 1120px;
+    }
+
+    /* ============================================================
+       Base
+       ============================================================ */
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html {
+      scroll-behavior: smooth;
+      -webkit-text-size-adjust: 100%;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      font-size: 17.5px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* subtle grain over everything, purely decorative */
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 2147483000;
+      pointer-events: none;
+      opacity: 0.035;
+      background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    ::selection { background: var(--accent-deep); color: #fff; }
+
+    h1, h2, h3 {
+      font-family: var(--font-display);
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+      margin: 0;
+    }
+
+    p { margin: 0; }
+
+    a { color: var(--accent-bright); text-decoration: none; }
+
+    :is(a, button, [tabindex]):focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+      border-radius: 6px;
+    }
+
+    .container {
+      max-width: var(--container);
+      margin-inline: auto;
+      padding-inline: clamp(1.25rem, 5vw, 2.5rem);
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px; height: 1px;
+      margin: -1px; padding: 0;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    .skip-link {
+      position: fixed;
+      top: 12px; left: 12px;
+      z-index: 2147483600;
+      padding: 0.6rem 1rem;
+      background: var(--accent);
+      color: #1c0a04;
+      font-weight: 600;
+      font-size: 14px;
+      line-height: 1.5;
+      border-radius: 8px;
+      transform: translateY(-300%);
+      transition: transform 0.2s ease;
+    }
+    .skip-link:focus { transform: none; }
+
+    [id] { scroll-margin-top: calc(var(--header-h) + 1.25rem); }
+
+    /* ============================================================
+       Buttons
+       ============================================================ */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.55rem;
+      padding: 0.72rem 1.2rem;
+      border-radius: 10px;
+      border: 1px solid transparent;
+      font: 600 14px/1 var(--font-body);
+      cursor: pointer;
+      transition: transform 0.18s ease, box-shadow 0.18s ease,
+                  background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+    }
+    .btn:active { transform: translateY(1px); }
+
+    .btn-primary {
+      background: linear-gradient(180deg, #ff7a4f, var(--accent-deep));
+      color: #1c0a04;
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset, 0 4px 10px -6px rgba(0, 0, 0, 0.55);
+    }
+    .btn-primary:hover { box-shadow: 0 1px 0 rgba(255, 255, 255, 0.3) inset, 0 6px 10px -6px rgba(0, 0, 0, 0.6); transform: translateY(-1px); }
+
+    .btn-ghost {
+      background: rgba(255, 255, 255, 0.03);
+      border-color: var(--border-strong);
+      color: var(--text);
+    }
+    .btn-ghost:hover { border-color: rgba(255, 255, 255, 0.3); background: rgba(255, 255, 255, 0.06); transform: translateY(-1px); }
+
+    .btn-sm { padding: 0.5rem 0.9rem; font-size: 14px; line-height: 1.5; }
+
+    /* ============================================================
+       Header
+       ============================================================ */
+    .site-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      height: var(--header-h);
+      padding-inline: 8px;
+      background: rgba(10, 10, 12, 0.82);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+      height: 100%;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      font: 600 17.5px/1 var(--font-display);
+      color: var(--text);
+      letter-spacing: -0.01em;
+      margin-right: auto;
+    }
+    .brand:hover { color: #fff; }
+    .brand-tag {
+      font: 500 11px/1 var(--font-mono);
+      color: var(--accent-bright);
+      background: var(--accent-soft);
+      border: 1px solid var(--accent-border);
+      padding: 0.22rem 0.5rem;
+      border-radius: 6px;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 1.75rem;
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    .nav-links a {
+      color: var(--text-muted);
+      font-size: 14px;
+      line-height: 1.6;
+      font-weight: 500;
+      transition: color 0.15s ease;
+    }
+    .nav-links a:hover { color: var(--text); }
+
+    @media (max-width: 760px) {
+      .nav-links { display: none; }
+    }
+
+    /* ============================================================
+       Hero
+       ============================================================ */
+    .hero {
+      position: relative;
+      overflow: clip;
+      padding: clamp(4.5rem, 9vw, 7.5rem) 8px clamp(3.5rem, 7vw, 6rem);
+    }
+
+    /* warm glow from the top */
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(52% 42% at 50% -6%, rgba(230, 74, 25, 0.16), transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero-grid {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+      gap: clamp(2.5rem, 6vw, 5rem);
+      align-items: center;
+    }
+
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      margin-bottom: 1.6rem;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      font: 500 14px/1 var(--font-mono);
+      color: var(--text-muted);
+      border: 1px solid var(--border-strong);
+      background: rgba(255, 255, 255, 0.03);
+      padding: 0.42rem 0.75rem;
+      border-radius: 999px;
+    }
+    .badge-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--text-faint);
+      flex: none;
+    }
+    .badge-accent {
+      color: var(--accent-bright);
+      border-color: var(--accent-border);
+      background: var(--accent-soft);
+    }
+    .badge-accent .badge-dot {
+      background: var(--accent);
+    }
+
+    .hero h1 {
+      font-size: clamp(28px, 5.6vw, 45px);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin-bottom: 1.25rem;
+    }
+    .hero h1 .grad {
+      color: var(--accent);
+    }
+
+    .hero-lede {
+      font-size: 22px;
+      line-height: 1.6;
+      color: var(--text-muted);
+      max-width: 34em;
+      margin-bottom: 2.25rem;
+    }
+
+    .hero-ctas {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.9rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .hero-note {
+      font: 400 14px/1.6 var(--font-mono);
+      color: var(--text-faint);
+    }
+    .hero-note strong { color: var(--text-muted); font-weight: 500; }
+
+    /* ---------- hero visual ---------- */
+    .hero-visual { position: relative; min-height: 420px; }
+
+    .hero-visual::before {
+      content: "";
+      position: absolute;
+      inset: -8% -6%;
+      background: radial-gradient(42% 42% at 55% 45%, rgba(230, 74, 25, 0.15), transparent 70%);
+      pointer-events: none;
+    }
+
+    .hv-card {
+      position: absolute;
+      border-radius: 16px;
+      background: linear-gradient(180deg, #1e1e25, #121217);
+      box-shadow: 0 30px 70px -28px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+      padding: 0.9rem;
+    }
+
+    .hv-pptx {
+      width: 62%;
+      left: 1%;
+      top: 3%;
+      transform: rotate(-4deg);
+      z-index: 2;
+    }
+
+    .hv-html {
+      width: 58%;
+      right: 1%;
+      bottom: 3%;
+      transform: rotate(3deg);
+      z-index: 3;
+    }
+
+    .hv-tag {
+      display: inline-block;
+      font: 600 11px/1 var(--font-mono);
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+      border: 1px solid var(--border-strong);
+      background: rgba(255, 255, 255, 0.04);
+      padding: 0.3rem 0.55rem;
+      border-radius: 6px;
+    }
+    .hv-html .hv-tag { color: var(--accent-bright); border-color: var(--accent-border); background: var(--accent-soft); }
+
+    .hv-thumb {
+      margin-top: 0.7rem;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #0e0e12;
+      padding: 0.7rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .sk { height: 7px; border-radius: 99px; background: rgba(255, 255, 255, 0.16); }
+    .sk.short { width: 38%; height: 5px; background: rgba(255, 255, 255, 0.09); }
+
+    .hv-chart {
+      display: flex;
+      align-items: flex-end;
+      gap: 7px;
+      height: 62px;
+      margin-top: 0.2rem;
+    }
+    .hv-chart i {
+      flex: 1;
+      border-radius: 3px 3px 0 0;
+      background: rgba(255, 106, 60, 0.35);
+    }
+    .hv-chart i:nth-child(1) { height: 42%; }
+    .hv-chart i:nth-child(2) { height: 68%; background: var(--accent); }
+    .hv-chart i:nth-child(3) { height: 50%; }
+    .hv-chart i:nth-child(4) { height: 88%; background: var(--accent); }
+    .hv-chart i:nth-child(5) { height: 62%; background: rgba(255, 106, 60, 0.55); }
+
+    .hv-code {
+      margin-top: 0.7rem;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #0c0c10;
+      padding: 0.7rem 0.8rem;
+      font: 400 11px/1.8 var(--font-mono);
+      color: var(--text-muted);
+      white-space: pre;
+      overflow: hidden;
+    }
+    .hv-code .t { color: var(--accent-bright); }
+    .hv-code .s { color: #8fd6a8; }
+    .hv-code .in { color: var(--text-faint); }
+
+    .hv-arrow {
+      position: absolute;
+      left: 50%;
+      top: 47%;
+      transform: translate(-50%, -50%);
+      z-index: 4;
+      width: 44px; height: 44px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: #16161c;
+      border: 1px solid var(--accent-border);
+      color: var(--accent);
+    }
+
+    .chip {
+      position: absolute;
+      z-index: 5;
+      font: 500 11px/1 var(--font-mono);
+      color: var(--text-muted);
+      background: rgba(20, 20, 25, 0.85);
+      border: 1px solid var(--border-strong);
+      border-radius: 999px;
+      padding: 0.42rem 0.7rem;
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      animation: hv-float 5.5s ease-in-out infinite alternate;
+    }
+    .chip-1 { top: -2%; right: 9%; animation-delay: -0.8s; }
+    .chip-2 { left: -4%; top: 42%; animation-delay: -2.1s; }
+    .chip-3 { right: -2%; bottom: 0%; animation-delay: -3.4s; }
+    .chip-4 { left: 6%; bottom: -3%; animation-delay: -4.6s; }
+    .chip-em { color: var(--accent-bright); border-color: var(--accent-border); }
+
+    @keyframes hv-float {
+      from { transform: translateY(-5px); }
+      to   { transform: translateY(6px); }
+    }
+
+    @media (max-width: 940px) {
+      .hero-grid { grid-template-columns: 1fr; }
+      .hero-visual { min-height: 360px; max-width: 520px; }
+      .chip-2 { left: 0; }
+      .chip-3 { right: 0; }
+    }
+
+    /* ============================================================
+       Sections: shared
+       ============================================================ */
+    .section {
+      padding: clamp(4rem, 9vw, 6.5rem) 8px;
+    }
+
+    .divider {
+      border: 0;
+      border-top: 1px solid var(--border);
+      margin: 8px 0;
+    }
+
+    .eyebrow {
+      font: 500 11px/1 var(--font-mono);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--accent-bright);
+      margin-bottom: 1.1rem;
+    }
+
+    .section-head { max-width: 640px; margin-bottom: clamp(2.25rem, 5vw, 3.5rem); }
+
+    .section-head h2 {
+      font-size: clamp(28px, 3.4vw, 36px);
+      font-weight: 600;
+      margin-bottom: 0.9rem;
+    }
+
+    .section-head p { color: var(--text-muted); font-size: 17.5px; line-height: 1.6; }
+
+    /* ============================================================
+       Features
+       ============================================================ */
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(255px, 1fr));
+      gap: 1rem;
+    }
+
+    .feature-card {
+      padding: 1.5rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.008));
+      transition: transform 0.22s ease, border-color 0.22s ease, background-color 0.22s ease;
+    }
+    .feature-card:hover {
+      transform: translateY(-3px);
+      border-color: var(--accent-border);
+      background-color: rgba(255, 106, 60, 0.03);
+    }
+
+    .card-head {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.6rem;
+      margin-bottom: 0.65rem;
+    }
+
+    .card-head svg {
+      width: 20px;
+      height: 20px;
+      flex: none;
+      color: var(--accent-bright);
+      margin-top: 0.16rem;
+    }
+
+    .card-head h3 { margin: 0; }
+
+    .feature-card h3 {
+      font-size: 17.5px;
+      font-weight: 600;
+    }
+
+    .feature-card p {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.55;
+    }
+
+    /* ============================================================
+       Stats band
+       ============================================================ */
+    .stats-band {
+      padding: clamp(3rem, 6vw, 4.5rem) 8px;
+      background:
+        radial-gradient(60% 90% at 50% 0%, rgba(230, 74, 25, 0.05), transparent 70%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent);
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1.5rem 1rem;
+    }
+
+    .stat { position: relative; padding-left: 1.25rem; }
+    .stat::before {
+      content: "";
+      position: absolute;
+      left: 0; top: 0.3rem; bottom: 0.3rem;
+      width: 2px;
+      border-radius: 2px;
+      background: linear-gradient(180deg, var(--accent), transparent);
+    }
+
+    .stat-num {
+      font: 700 clamp(28px, 4.5vw, 45px)/1 var(--font-display);
+      letter-spacing: -0.03em;
+      color: var(--text);
+      display: block;
+      margin-bottom: 0.55rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .stat-num .unit { color: var(--accent-bright); }
+
+    .stat-label {
+      display: block;
+      font: 600 14px/1.3 var(--font-body);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text);
+      margin-bottom: 0.3rem;
+    }
+
+    .stat-desc {
+      display: block;
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--text-faint);
+      line-height: 1.5;
+    }
+
+    @media (max-width: 760px) {
+      .stats { grid-template-columns: 1fr 1fr; gap: 2rem 1rem; }
+    }
+
+    /* ============================================================
+       Quick start
+       ============================================================ */
+    .code-stack {
+      display: grid;
+      gap: 1.25rem;
+      max-width: 780px;
+    }
+
+    .code-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: #0d0d11;
+      overflow: hidden;
+      box-shadow: 0 2px 8px -4px rgba(0, 0, 0, 0.4);
+    }
+
+    .code-head {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.6rem 0.75rem 0.6rem 1rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .dots { display: flex; gap: 6px; }
+    .dots i {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.13);
+    }
+
+    .code-title {
+      font: 500 11px/1 var(--font-mono);
+      color: var(--text-faint);
+      margin-right: auto;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .copy-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font: 500 11px/1 var(--font-mono);
+      color: var(--text-muted);
+      background: transparent;
+      border: 1px solid var(--border-strong);
+      border-radius: 7px;
+      padding: 0.38rem 0.6rem;
+      cursor: pointer;
+      min-width: 5.4rem;
+      justify-content: center;
+      transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+    }
+    .copy-btn:hover { color: var(--accent-bright); border-color: var(--accent-border); }
+    .copy-btn.copied { color: var(--green); border-color: rgba(90, 208, 138, 0.4); background: rgba(90, 208, 138, 0.07); }
+
+    .code-card pre {
+      margin: 0;
+      padding: 1rem 1.15rem 1.1rem;
+      overflow-x: auto;
+    }
+
+    .code-card code {
+      font: 400 14px/1.9 var(--font-mono);
+      color: #e8e6e3;
+      display: block;
+      min-width: max-content;
+    }
+
+    .ln { display: block; white-space: pre; }
+    .ln.cmd::before {
+      content: "$ ";
+      color: var(--accent);
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .cm { color: var(--text-faint); }
+
+    .quickstart-note {
+      margin-top: 1.5rem;
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--text-muted);
+      max-width: 640px;
+    }
+    .quickstart-note code {
+      font: 400 14px/1.6 var(--font-mono);
+      color: var(--accent-bright);
+      background: var(--accent-soft);
+      border-radius: 5px;
+      padding: 0.15em 0.4em;
+    }
+
+    /* ============================================================
+       Phase table
+       ============================================================ */
+    .table-wrap {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.75rem;
+      overflow-x: auto;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent);
+    }
+
+    .cmp { width: 100%; border-collapse: collapse; min-width: 600px; }
+
+    .cmp th, .cmp td {
+      text-align: left;
+      padding: 0.85rem 1.1rem;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+      line-height: 1.5;
+      vertical-align: middle;
+    }
+
+    .cmp thead th {
+      font: 500 11px/1.4 var(--font-mono);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-faint);
+      background: rgba(255, 255, 255, 0.02);
+      padding-top: 1rem;
+      padding-bottom: 1rem;
+      white-space: nowrap;
+    }
+
+    .cmp tbody tr:last-child td { border-bottom: none; }
+    .cmp tbody tr:hover td { background: rgba(255, 255, 255, 0.015); }
+
+    .p2 { box-shadow: inset 1px 0 0 var(--accent-border), inset -1px 0 0 var(--accent-border); }
+    thead .p2 { background: rgba(255, 106, 60, 0.07); }
+    tbody .p2 { background: rgba(255, 106, 60, 0.045); }
+
+    thead .p2 .col-name { color: var(--accent-bright); }
+
+    .pill-rec {
+      display: inline-block;
+      font: 600 11px/1 var(--font-mono);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #1c0a04;
+      background: var(--accent);
+      border-radius: 999px;
+      padding: 0.22rem 0.5rem;
+      margin-left: 0.6rem;
+      vertical-align: middle;
+    }
+
+    .ok { color: var(--green); }
+    .ok-dim { color: rgba(90, 208, 138, 0.6); }
+    .no {
+      color: var(--text-faint);
+      font-weight: 400;
+    }
+
+    .pill-new {
+      display: inline-block;
+      font: 600 11px/1 var(--font-mono);
+      letter-spacing: 0.08em;
+      color: var(--accent-bright);
+      background: var(--accent-soft);
+      border: 1px solid var(--accent-border);
+      border-radius: 999px;
+      padding: 0.16rem 0.45rem;
+      margin-left: 0.55rem;
+      vertical-align: middle;
+    }
+
+    .dpi { font-family: var(--font-mono); font-size: 14px; line-height: 1.5; color: var(--text-muted); }
+
+    .row-final td {
+      background: rgba(255, 255, 255, 0.025);
+      font-weight: 600;
+    }
+    .row-final td.p2 { background: rgba(255, 106, 60, 0.08); }
+    .row-final .dpi { color: var(--text); font-weight: 600; }
+    .row-final .dpi strong { color: var(--accent-bright); }
+
+    /* ============================================================
+       Docs cards
+       ============================================================ */
+    .docs-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+      gap: 1rem;
+    }
+
+    .doc-card {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+      padding: 1.5rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.008));
+      color: var(--text);
+      transition: transform 0.22s ease, border-color 0.22s ease;
+    }
+    .doc-card:hover { transform: translateY(-3px); border-color: var(--accent-border); color: var(--text); }
+
+    .doc-card h3 { font-size: 17.5px; font-weight: 600; }
+
+    .doc-card p { font-size: 14px; color: var(--text-muted); line-height: 1.55; flex: 1; }
+
+    .doc-meta {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      font: 400 11px/1 var(--font-mono);
+      color: var(--text-faint);
+    }
+    .doc-card:hover .doc-meta { color: var(--accent-bright); }
+
+    .ext-icon { margin-left: auto; color: var(--text-faint); flex: none; }
+    .doc-card:hover .ext-icon { color: var(--accent-bright); }
+
+    /* ============================================================
+       Footer
+       ============================================================ */
+    .site-footer {
+      padding: 2.75rem 8px;
+      border-bottom: none;
+    }
+
+    .footer-inner {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 1rem 2rem;
+    }
+
+    .footer-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      font: 600 17.5px/1 var(--font-display);
+      color: var(--text);
+    }
+
+    .footer-tag { color: var(--text-muted); font-size: 14px; line-height: 1.5; }
+
+    .footer-link {
+      margin-left: auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--text-muted);
+      font-size: 14px;
+      line-height: 1.5;
+      transition: color 0.15s ease;
+    }
+    .footer-link:hover { color: var(--text); }
+
+    /* ============================================================
+       Scroll reveal
+       ============================================================ */
+    .reveal {
+      opacity: 0;
+      transform: translateY(18px);
+      transition: opacity 0.65s ease, transform 0.65s cubic-bezier(0.2, 0.7, 0.2, 1);
+    }
+    .reveal.is-visible { opacity: 1; transform: none; }
+
+    .feature-grid > .reveal:nth-child(2) { transition-delay: 0.06s; }
+    .feature-grid > .reveal:nth-child(3) { transition-delay: 0.12s; }
+    .feature-grid > .reveal:nth-child(4) { transition-delay: 0.18s; }
+    .feature-grid > .reveal:nth-child(5) { transition-delay: 0.24s; }
+    .feature-grid > .reveal:nth-child(6) { transition-delay: 0.30s; }
+    .feature-grid > .reveal:nth-child(7) { transition-delay: 0.36s; }
+    .feature-grid > .reveal:nth-child(8) { transition-delay: 0.42s; }
+    .feature-grid > .reveal:nth-child(9) { transition-delay: 0.48s; }
+    .docs-grid > .reveal:nth-child(2) { transition-delay: 0.08s; }
+    .docs-grid > .reveal:nth-child(3) { transition-delay: 0.16s; }
+    .stats > .reveal:nth-child(2) { transition-delay: 0.08s; }
+    .stats > .reveal:nth-child(3) { transition-delay: 0.16s; }
+    .stats > .reveal:nth-child(4) { transition-delay: 0.24s; }
+
+    /* ============================================================
+       Reduced motion
+       ============================================================ */
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+      .reveal { opacity: 1 !important; transform: none !important; }
+    }
+  </style>
+</head>
+<body id="top">
+
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <nav class="nav container" aria-label="Main">
+      <a class="brand" href="#top" aria-label="PPTX to HTML home">
+        <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+          <rect width="32" height="32" rx="7" fill="#E64A19"></rect>
+          <path d="M11 9.5l13 6.5-13 6.5z" fill="#fff"></path>
+        </svg>
+        <span>PPTX to HTML</span>
+        <span class="brand-tag">v2</span>
+      </a>
+      <ul class="nav-links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#quickstart">Quick Start</a></li>
+        <li><a href="#phases">Phases</a></li>
+        <li><a href="#docs">Docs</a></li>
+      </ul>
+      <a class="btn btn-ghost btn-sm" href="https://github.com/cskwork/pptx-to-html-updated" target="_blank" rel="noopener">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"></path></svg>
+        <span>GitHub</span>
+      </a>
+    </nav>
+  </header>
+
+  <main id="main">
+
+    <!-- ================= Hero ================= -->
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <div class="badges reveal">
+            <span class="badge badge-accent"><span class="badge-dot"></span>Phase 2 · Production Ready</span>
+            <span class="badge"><span class="badge-dot"></span>Python 3.7+</span>
+            <span class="badge"><span class="badge-dot"></span>Open source</span>
+          </div>
+          <h1 id="hero-title" class="reveal">PowerPoint in.<br><span class="grad">Faithful HTML</span> out.</h1>
+          <p class="hero-lede reveal">Convert PowerPoint presentations into portable HTML bundles with 98%+ visual fidelity.</p>
+          <div class="hero-ctas reveal">
+            <a class="btn btn-primary" href="#quickstart">Get Started</a>
+            <a class="btn btn-ghost" href="https://github.com/cskwork/pptx-to-html-updated" target="_blank" rel="noopener">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"></path></svg>
+              View on GitHub
+            </a>
+          </div>
+          <p class="hero-note reveal">No runtime web dependencies: <strong>Chart.js from CDN</strong> is the only external fetch in generated output.</p>
+        </div>
+
+        <div class="hero-visual reveal" aria-hidden="true">
+          <div class="hv-card hv-pptx">
+            <span class="hv-tag">.PPTX</span>
+            <div class="hv-thumb">
+              <span class="sk"></span>
+              <span class="sk short"></span>
+              <div class="hv-chart"><i></i><i></i><i></i><i></i><i></i></div>
+            </div>
+          </div>
+          <div class="hv-arrow">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+          </div>
+          <div class="hv-card hv-html">
+            <span class="hv-tag">.HTML</span>
+            <div class="hv-code"><span class="t">&lt;div</span> <span class="in">class</span>=<span class="s">"slide"</span><span class="t">&gt;</span>
+  <span class="t">&lt;svg</span> <span class="in">class</span>=<span class="s">"shapes"</span><span class="t">&gt;</span>…<span class="t">&lt;/svg&gt;</span>
+  <span class="t">&lt;canvas</span> <span class="in">data-chart</span>=<span class="s">"bar"</span><span class="t">&gt;</span>
+<span class="t">&lt;/div&gt;</span></div>
+          </div>
+          <span class="chip chip-1 chip-em">Chart.js</span>
+          <span class="chip chip-2">SVG shapes</span>
+          <span class="chip chip-3">150 DPI</span>
+          <span class="chip chip-4 chip-em">CSS animations</span>
+        </div>
+      </div>
+    </section>
+
+    <hr class="divider">
+
+    <!-- ================= Features ================= -->
+    <section id="features" class="section" aria-labelledby="features-title">
+      <div class="container">
+        <div class="section-head reveal">
+          <p class="eyebrow">01 · Features</p>
+          <h2 id="features-title">Everything on the slide survives the trip</h2>
+          <p>Text, charts, shapes, media and effects are rebuilt as native HTML, CSS and SVG, not baked into screenshots.</p>
+        </div>
+
+        <div class="feature-grid">
+          <article class="feature-card reveal">
+            <div class="card-head">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 3v18h18"></path><path d="M7 15v-4"></path><path d="M11 15V8"></path><path d="M15 15v-2"></path><path d="M19 15V5"></path></svg>
+              <h3>Chart rendering</h3>
+            </div>
+            <p>Bar, line, pie, doughnut, area, scatter, radar and bubble charts are rebuilt as interactive Chart.js canvases.</p>
+          </article>
+
+          <article class="feature-card reveal">
+            <div class="card-head">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M13 3 4 14h6l-1 7 9-11h-6l1-7z"></path></svg>
+              <h3>Custom shapes to SVG</h3>
+            </div>
+            <p>Arrows, flowchart blocks and freeform custom paths convert to crisp, infinitely scalable SVG.</p>
+          </article>
+
+          <article class="feature-card reveal">
+            <div class="card-head">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="5" cy="6" r="2.2"></circle><circle cx="5" cy="18" r="2.2"></circle><circle cx="19" cy="12" r="2.2"></circle><path d="M7 6h6a2 2 0 0 1 2 2v8"></path><path d="M7 18h6a2 2 0 0 0 2-2"></path></svg>
+              <h3>SmartArt text extraction</h3>
+            </div>
+            <p>SmartArt graphics fall back to clean, structured text that keeps the original hierarchy intact.</p>
+          </article>
+
+          <article class="feature-card reveal">
+            <div class="card-head">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"></circle><path d="m10 8.5 5 3.5-5 3.5z" fill="currentColor" stroke="none"></path></svg>
+              <h3>Animation preservation</h3>
+            </div>
+            <p>Entrance effects are re-expressed as native CSS keyframes, replayed on every slide change.</p>
+          </article>
+
+          <article class="feature-card reveal">
+            <div class="card-head">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="3" width="13" height="13" rx="2.5"></rect><rect x="8" y="8" width="13" height="13" rx="2.5" opacity="0.45"></rect></svg>
+              <h3>Shadows &amp; reflections</h3>
+            </div>
+            <p>Shape shadows carry over as CSS box-shadows; reflections render in WebKit browsers.</p>
+          </article>
+
+          <article class="feature-card reveal">
+            <div class="card-head">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="2.5"></rect><circle cx="9" cy="9" r="1.8"></circle><path d="m21 15-4.5-4.5L7 20"></path></svg>
+              <h3>150 DPI images</h3>
+            </div>
+            <p>Embedded pictures export at up to 150 DPI, sharp on retina screens and projectors alike.</p>
+          </article>
+
+          <article class="feature-card reveal">
+            <div class="card-head">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="14" rx="2.5"></rect><path d="m10 9.5 5 2.5-5 2.5z"></path></svg>
+              <h3>Video &amp; audio embedding</h3>
+            </div>
+            <p>Media stays media: clips and audio keep playing directly in the browser, not as posters.</p>
+          </article>
+
+          <article class="feature-card reveal">
+            <div class="card-head">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="2.5"></rect><path d="M3 9.5h18"></path><path d="M3 15h18"></path><path d="M9 4v16"></path></svg>
+              <h3>Tables &amp; hyperlinks</h3>
+            </div>
+            <p>Fully styled tables and live hyperlinks, including merged cells and themed fills.</p>
+          </article>
+
+          <article class="feature-card reveal">
+            <div class="card-head">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 7V5h16v2"></path><path d="M12 5v14"></path><path d="M9 19h6"></path></svg>
+              <h3>Embedded fonts</h3>
+            </div>
+            <p>Fonts embedded in the deck are de-obfuscated and re-served as WOFF webfonts, so typefaces survive the trip.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <hr class="divider">
+
+    <!-- ================= Fidelity stats ================= -->
+    <section id="fidelity" class="stats-band" aria-labelledby="fidelity-title">
+      <div class="container">
+        <h2 id="fidelity-title" class="sr-only">Fidelity and performance numbers</h2>
+        <div class="stats">
+          <div class="stat reveal">
+            <span class="stat-num"><span data-count="98">98</span><span class="unit">%+</span></span>
+            <span class="stat-label">Visual fidelity</span>
+            <span class="stat-desc">Pixel-close output across real-world decks</span>
+          </div>
+          <div class="stat reveal">
+            <span class="stat-num"><span data-count="12">12</span></span>
+            <span class="stat-label">Chart types</span>
+            <span class="stat-desc">Rebuilt live as interactive Chart.js canvases</span>
+          </div>
+          <div class="stat reveal">
+            <span class="stat-num">1–2<span class="unit">s</span></span>
+            <span class="stat-label">Per slide</span>
+            <span class="stat-desc">Typical conversion time on a laptop</span>
+          </div>
+          <div class="stat reveal">
+            <span class="stat-num"><span data-count="100">100</span><span class="unit">+</span></span>
+            <span class="stat-label">Slides supported</span>
+            <span class="stat-desc">Long decks convert in a single pass</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="divider">
+
+    <!-- ================= Quick start ================= -->
+    <section id="quickstart" class="section" aria-labelledby="quickstart-title">
+      <div class="container">
+        <div class="section-head reveal">
+          <p class="eyebrow">02 · Quick Start</p>
+          <h2 id="quickstart-title">Two commands and a browser</h2>
+          <p>Clone the repo, install dependencies, and point the converter at a deck. Output is a portable HTML bundle — HTML, CSS, JS and assets that open straight from disk.</p>
+        </div>
+
+        <div class="code-stack">
+          <div class="code-card reveal">
+            <div class="code-head">
+              <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="code-title">terminal: install</span>
+              <button class="copy-btn" type="button" data-copy aria-label="Copy install command to clipboard">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="9" y="9" width="12" height="12" rx="2.5"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                <span class="copy-label">Copy</span>
+              </button>
+            </div>
+            <pre><code><span class="ln cmd">pip install -r requirements.txt</span></code></pre>
+          </div>
+
+          <div class="code-card reveal">
+            <div class="code-head">
+              <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="code-title">terminal: convert</span>
+              <button class="copy-btn" type="button" data-copy aria-label="Copy convert commands to clipboard">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="9" y="9" width="12" height="12" rx="2.5"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                <span class="copy-label">Copy</span>
+              </button>
+            </div>
+            <pre><code><span class="ln cmd">python scripts/convert_pptx_to_html_v2.py presentation.pptx output/</span><span class="ln cmd">python scripts/convert_pptx_to_html_v2.py presentation.pptx output/ 300  <span class="cm"># custom DPI</span></span></code></pre>
+          </div>
+        </div>
+
+        <p class="quickstart-note reveal">Open <code>output/presentation.html</code> in any browser. No server, no build step. Pass a trailing DPI argument like <code>300</code> to control image resolution.</p>
+      </div>
+    </section>
+
+    <hr class="divider">
+
+    <!-- ================= Phase comparison ================= -->
+    <section id="phases" class="section" aria-labelledby="phases-title">
+      <div class="container">
+        <div class="section-head reveal">
+          <p class="eyebrow">03 · Phase comparison</p>
+          <h2 id="phases-title">What Phase 2 adds</h2>
+          <p>Phase 1 produced solid static decks. Phase 2 closes the gap on the hard parts: charts, vector shapes, motion and effects.</p>
+        </div>
+
+        <div class="table-wrap reveal" role="region" aria-label="Phase 1 versus Phase 2 feature comparison" tabindex="0">
+          <table class="cmp">
+            <thead>
+              <tr>
+                <th scope="col">Capability</th>
+                <th scope="col">Phase 1</th>
+                <th scope="col" class="p2"><span class="col-name">Phase 2</span><span class="pill-rec">Recommended</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Text formatting</th>
+                <td><span class="ok ok-dim" title="Supported">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 6 9 17l-5-5"></path></svg><span class="sr-only">Supported</span></span></td>
+                <td class="p2"><span class="ok" title="Supported">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 6 9 17l-5-5"></path></svg><span class="sr-only">Supported</span></span></td>
+              </tr>
+              <tr>
+                <th scope="row">Images</th>
+                <td><span class="dpi">72 DPI</span></td>
+                <td class="p2"><span class="dpi">150 DPI</span></td>
+              </tr>
+              <tr>
+                <th scope="row">Charts</th>
+                <td><span class="no"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg><span class="sr-only">Not supported</span></span></td>
+                <td class="p2"><span class="ok" title="Supported">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 6 9 17l-5-5"></path></svg><span class="sr-only">Supported</span></span><span class="pill-new">New</span></td>
+              </tr>
+              <tr>
+                <th scope="row">Custom shapes</th>
+                <td><span class="no"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg><span class="sr-only">Not supported</span></span></td>
+                <td class="p2"><span class="ok" title="Supported">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 6 9 17l-5-5"></path></svg><span class="sr-only">Supported</span></span><span class="pill-new">New</span></td>
+              </tr>
+              <tr>
+                <th scope="row">SmartArt</th>
+                <td><span class="no"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg><span class="sr-only">Not supported</span></span></td>
+                <td class="p2"><span class="ok" title="Supported">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 6 9 17l-5-5"></path></svg><span class="sr-only">Supported</span></span><span class="pill-new">text-only</span></td>
+              </tr>
+              <tr>
+                <th scope="row">Animations</th>
+                <td><span class="no"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg><span class="sr-only">Not supported</span></span></td>
+                <td class="p2"><span class="ok" title="Supported">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 6 9 17l-5-5"></path></svg><span class="sr-only">Supported</span></span><span class="pill-new">New</span></td>
+              </tr>
+              <tr>
+                <th scope="row">Shadows &amp; reflections</th>
+                <td><span class="no"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg><span class="sr-only">Not supported</span></span></td>
+                <td class="p2"><span class="ok" title="Supported">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 6 9 17l-5-5"></path></svg><span class="sr-only">Supported</span></span><span class="pill-new">New</span></td>
+              </tr>
+              <tr class="row-final">
+                <th scope="row">Visual fidelity</th>
+                <td><span class="dpi">95%</span></td>
+                <td class="p2"><span class="dpi"><strong>98%+</strong></span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <hr class="divider">
+
+    <!-- ================= Docs ================= -->
+    <section id="docs" class="section" aria-labelledby="docs-title">
+      <div class="container">
+        <div class="section-head reveal">
+          <p class="eyebrow">04 · Documentation</p>
+          <h2 id="docs-title">Go deeper</h2>
+          <p>Everything else lives in the repo: architecture notes, release history, and the agent-facing skill contract.</p>
+        </div>
+
+        <div class="docs-grid">
+          <a class="doc-card reveal" href="./architecture.md">
+            <div class="card-head">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="3" width="8" height="8" rx="1.5"></rect><rect x="13" y="3" width="8" height="8" rx="1.5"></rect><rect x="3" y="13" width="8" height="8" rx="1.5"></rect><path d="M17 13v8"></path><path d="M13 17h8"></path></svg>
+              <h3>Architecture</h3>
+            </div>
+            <p>How the converter pipeline is structured, from slide parsing to HTML emission.</p>
+            <span class="doc-meta">./architecture.md</span>
+          </a>
+
+          <a class="doc-card reveal" href="./changelog.md">
+            <div class="card-head">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-7.6 4.2"></path><path d="M3 3v5h5"></path><path d="M12 7v5l3.5 2"></path></svg>
+              <h3>Changelog</h3>
+            </div>
+            <p>Release notes and fixes across Phase 1 and Phase 2, newest first.</p>
+            <span class="doc-meta">./changelog.md</span>
+          </a>
+
+          <a class="doc-card reveal" href="https://github.com/cskwork/pptx-to-html-updated/blob/main/SKILL.md" target="_blank" rel="noopener">
+            <div class="card-head">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+              <h3>SKILL.md reference</h3>
+            </div>
+            <p>The agent-facing skill contract: inputs, outputs and usage for Claude and other coding CLIs.</p>
+            <span class="doc-meta">SKILL.md
+              <svg class="ext-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M7 17 17 7"></path><path d="M8 7h9v9"></path></svg>
+            </span>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <hr class="divider">
+
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <span class="footer-brand">
+        <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+          <rect width="32" height="32" rx="7" fill="#E64A19"></rect>
+          <path d="M11 9.5l13 6.5-13 6.5z" fill="#fff"></path>
+        </svg>
+        PPTX to HTML
+      </span>
+      <span class="footer-tag">Built as an agent skill for Claude Code &amp; friends</span>
+      <a class="footer-link" href="https://github.com/cskwork/pptx-to-html-updated" target="_blank" rel="noopener">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"></path></svg>
+        github.com/cskwork/pptx-to-html-updated
+      </a>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      'use strict';
+
+      var prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      var supportsIO = 'IntersectionObserver' in window;
+
+      /* ---------- scroll reveal ---------- */
+      var revealEls = Array.prototype.slice.call(document.querySelectorAll('.reveal'));
+
+      if (prefersReduced || !supportsIO) {
+        revealEls.forEach(function (el) { el.classList.add('is-visible'); });
+      } else {
+        var revealIO = new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            if (entry.isIntersecting) {
+              entry.target.classList.add('is-visible');
+              revealIO.unobserve(entry.target);
+            }
+          });
+        }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+
+        revealEls.forEach(function (el) { revealIO.observe(el); });
+      }
+
+      /* ---------- stat count-up ---------- */
+      var counters = Array.prototype.slice.call(document.querySelectorAll('[data-count]'));
+
+      function runCount(el) {
+        var final = parseInt(el.getAttribute('data-count'), 10) || 0;
+        if (prefersReduced || !supportsIO) { el.textContent = String(final); return; }
+        el.textContent = '0';
+        var duration = 1100;
+        var start = null;
+        function step(ts) {
+          if (start === null) start = ts;
+          var p = Math.min((ts - start) / duration, 1);
+          var eased = 1 - Math.pow(1 - p, 3);
+          el.textContent = String(Math.round(final * eased));
+          if (p < 1) { window.requestAnimationFrame(step); }
+          else { el.textContent = String(final); }
+        }
+        window.requestAnimationFrame(step);
+      }
+
+      if (prefersReduced || !supportsIO) {
+        counters.forEach(runCount);
+      } else {
+        var countIO = new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            if (entry.isIntersecting) {
+              runCount(entry.target);
+              countIO.unobserve(entry.target);
+            }
+          });
+        }, { threshold: 0.4 });
+        counters.forEach(function (el) { countIO.observe(el); });
+      }
+
+      /* ---------- copy buttons ---------- */
+      function extractCode(card) {
+        var code = card.querySelector('pre code');
+        if (!code) return '';
+        return code.textContent
+          .replace(/^\n+/, '')
+          .replace(/\n+$/, '')
+          .split('\n')
+          .map(function (line) { return line.replace(/\s+$/, ''); })
+          .join('\n');
+      }
+
+      function copyToClipboard(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+          return navigator.clipboard.writeText(text);
+        }
+        return new Promise(function (resolve, reject) {
+          var ta = document.createElement('textarea');
+          ta.value = text;
+          ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          try {
+            var ok = document.execCommand('copy');
+            document.body.removeChild(ta);
+            if (ok) { resolve(); } else { reject(new Error('copy failed')); }
+          } catch (err) {
+            document.body.removeChild(ta);
+            reject(err);
+          }
+        });
+      }
+
+      Array.prototype.slice.call(document.querySelectorAll('[data-copy]')).forEach(function (btn) {
+        var label = btn.querySelector('.copy-label');
+        var timer = null;
+
+        btn.addEventListener('click', function () {
+          var card = btn.closest('.code-card');
+          if (!card) return;
+          copyToClipboard(extractCode(card)).then(function () {
+            btn.classList.add('copied');
+            if (label) label.textContent = 'Copied';
+            if (timer) window.clearTimeout(timer);
+            timer = window.setTimeout(function () {
+              btn.classList.remove('copied');
+              if (label) label.textContent = 'Copy';
+            }, 1800);
+          }).catch(function () {
+            if (label) label.textContent = 'Select + copy';
+            if (timer) window.clearTimeout(timer);
+            timer = window.setTimeout(function () {
+              if (label) label.textContent = 'Copy';
+            }, 1800);
+          });
+        });
+      });
+    })();
+  </script>
+
+</body>
+</html>
