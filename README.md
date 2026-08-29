@@ -1,55 +1,42 @@
-# PowerPoint to HTML Converter - Phase 2 (Production Ready)
+# PowerPoint to HTML converter (Phase 2)
 
-Convert PowerPoint presentations (.pptx) to standalone HTML files with **98%+ visual fidelity** and comprehensive feature support.
+Converts `.pptx` presentations to standalone HTML files. The author measures
+visual fidelity at 98%+ and feature coverage at 92%.
 
-## 🚀 What's New in Phase 2
+## What Phase 2 adds
 
-### Production-Quality Features
-- **📊 Chart Rendering** - All major chart types with Chart.js
-- **🎨 Custom Shapes** - SVG conversion for arrows, connectors, flowcharts
-- **🔷 SmartArt Support** - Text extraction from diagrams
-- **✨ Animations** - CSS/JavaScript animation preservation
-- **🎭 Shadow & Reflection** - Advanced visual effects
-- **📸 Higher DPI** - 150 DPI images (upgraded from 72 DPI)
-- **📝 Comprehensive Logging** - Detailed conversion reports
+Phase 1 already handled text, shapes, images, tables, hyperlinks, media, and
+backgrounds. Phase 2 adds five things on top and raises image extraction from
+72 DPI to 150 DPI.
 
-### Charts Supported
-✅ Bar Charts (2D/3D)
-✅ Line Charts (2D/3D)
-✅ Pie Charts (2D/3D)
-✅ Area Charts
-✅ Scatter Plots
-✅ Doughnut Charts
+- **Charts.** Rendered with Chart.js from the embedded chart data.
+- **Custom shapes.** Arrows, connectors, and flowchart elements convert to SVG.
+- **SmartArt.** Text is extracted; the visual layout is not reproduced.
+- **Animations.** Mapped to CSS keyframes and JavaScript.
+- **Shadows and reflections.** Rendered as CSS effects.
 
-### Custom Shapes Supported
-✅ Arrows (all directions)
-✅ Connectors
-✅ Flowchart elements
-✅ Basic geometric shapes
-✅ Stars, polygons
+It also writes a per-conversion log and a Markdown report.
 
-## Quick Start
+Chart types: bar, line, and pie (2D and 3D), area, scatter, doughnut.
 
-### Installation
+Shape types: arrows in all directions, connectors, flowchart elements, basic
+geometric shapes, stars, polygons.
+
+## Quick start
 
 ```bash
-# Navigate to skills directory
 cd /path/to/pptx-to-html-updated
-
-# Install dependencies
 pip install -r requirements.txt
 ```
-
-### Basic Usage
 
 ```bash
 # Phase 2 converter (recommended)
 python scripts/convert_pptx_to_html_v2.py presentation.pptx output/
 
-# With custom DPI
+# with custom DPI
 python scripts/convert_pptx_to_html_v2.py presentation.pptx output/ 300
 
-# Legacy converter (Phase 1)
+# Phase 1 converter (legacy)
 python scripts/convert_pptx_to_html.py presentation.pptx output/
 ```
 
@@ -58,7 +45,6 @@ python scripts/convert_pptx_to_html.py presentation.pptx output/
 ```python
 from scripts.convert_pptx_to_html_v2 import EnhancedPPTXToHTMLV2
 
-# Create converter with 150 DPI
 converter = EnhancedPPTXToHTMLV2(
     'presentation.pptx',
     output_dir='./output',
@@ -66,119 +52,108 @@ converter = EnhancedPPTXToHTMLV2(
     log_file='./output/conversion.log'
 )
 
-# Convert
 result = converter.convert()
 print(f"Converted: {result}")
 ```
 
-## Features Comparison
+## Phase 1 vs Phase 2
 
 | Feature | Phase 1 | Phase 2 |
-|---------|---------|---------|
-| **Text Formatting** | ✅ | ✅ |
-| **Shapes & Borders** | ✅ | ✅ |
-| **Images** | ✅ 72 DPI | ✅ 150 DPI |
-| **Videos & Audio** | ✅ | ✅ |
-| **Tables** | ✅ | ✅ |
-| **Hyperlinks** | ✅ | ✅ |
-| **Backgrounds** | ✅ | ✅ |
-| **Charts** | ❌ | ✅ **NEW** |
-| **Custom Shapes** | ❌ | ✅ **NEW** |
-| **SmartArt** | ❌ | ✅ **NEW** (text only) |
-| **Animations** | ❌ | ✅ **NEW** |
-| **Shadows** | ❌ | ✅ **NEW** |
-| **Reflections** | ❌ | ✅ **NEW** |
-| **Logging** | ⚠️ Basic | ✅ **Production-grade** |
-| **Error Handling** | ⚠️ Basic | ✅ **Comprehensive** |
-| **Visual Fidelity** | 95% | 98%+ |
-| **Feature Coverage** | 80% | 92% |
+|---|---|---|
+| Text formatting | yes | yes |
+| Shapes and borders | yes | yes |
+| Images | 72 DPI | 150 DPI |
+| Video and audio | yes | yes |
+| Tables | yes | yes |
+| Hyperlinks | yes | yes |
+| Backgrounds | yes | yes |
+| Charts | no | yes |
+| Custom shapes | no | yes |
+| SmartArt | no | text only |
+| Animations | no | yes |
+| Shadows | no | yes |
+| Reflections | no | yes |
+| Logging | basic | full log + report |
+| Error handling | basic | per-element, with warnings |
+| Visual fidelity | 95% | 98%+ |
+| Feature coverage | 80% | 92% |
 
-## Output Structure
+## Output structure
 
 ```
 output-directory/
-├── presentation.html          # Main presentation file
-├── presentation_report.md     # Detailed conversion report
-├── conversion.log            # Full conversion log
+├── presentation.html          # main presentation file
+├── presentation_report.md     # conversion report
+├── conversion.log             # full conversion log
 └── assets/
-    ├── slide1_img_rId2.png      # Images (150 DPI)
-    ├── slide2_chart_1.json      # Chart data
-    ├── slide3_video_rId5.mp4    # Videos
-    └── slide4_audio_rId7.mp3    # Audio files
+    ├── slide1_img_rId2.png      # images (150 DPI)
+    ├── slide2_chart_1.json      # chart data
+    ├── slide3_video_rId5.mp4    # videos
+    └── slide4_audio_rId7.mp3    # audio files
 ```
 
 ## Dependencies
 
-- **Python 3.7+**
-- **python-pptx** - PowerPoint file parsing
-- **openpyxl** - Excel chart data extraction
+- Python 3.7+
+- `python-pptx` for PowerPoint file parsing
+- `openpyxl` for Excel chart data extraction
 
-No web dependencies - Chart.js loads from CDN in generated HTML.
+No web dependencies. Chart.js loads from a CDN in the generated HTML.
 
-## Architecture (Phase 2)
+## Architecture
 
 ```
 pptx-to-html-updated/
 ├── scripts/
 │   ├── convert_pptx_to_html.py          # Phase 1 (legacy)
 │   ├── convert_pptx_to_html_v2.py       # Phase 2 (recommended)
-│   ├── logger.py                        # Logging system
+│   ├── logger.py                        # logging
 │   ├── chart_extractor.py               # Chart.js integration
 │   ├── shape_geometry.py                # SVG conversion
 │   ├── smartart_parser.py               # SmartArt extraction
-│   └── animation_handler.py             # Animation mapping
-├── tests/                               # Test suite
-├── docs/                                # Documentation
-├── requirements.txt                     # Python dependencies
-├── SKILL.md                            # Complete reference
-└── README.md                           # This file
+│   └── animation_handler.py             # animation mapping
+├── tests/
+├── docs/
+├── requirements.txt
+├── SKILL.md                             # full reference
+└── README.md
 ```
 
-## Conversion Quality
+## What survives the conversion
 
-### Fully Preserved Elements (100%)
-- Text formatting (fonts, colors, size, bold, italic, underline)
-- Shape positioning (pixel-accurate)
-- Images with exact placement
-- Tables with all styling
-- Hyperlinks (text and shape level)
-- Video and audio playback
+Preserved exactly: text formatting (font, color, size, bold, italic,
+underline), shape positioning to the pixel, images and their placement, table
+styling, hyperlinks at both text and shape level, video and audio playback.
 
-### Phase 2 Elements (NEW - 95%+)
-- **Charts**: Data-driven with Chart.js
-- **Custom Shapes**: SVG-based rendering
-- **Shadows**: CSS box-shadow
-- **Animations**: CSS keyframes + JavaScript
+Preserved at 95%+: charts (data-driven via Chart.js), custom shapes (SVG),
+shadows (CSS `box-shadow`), animations (CSS keyframes plus JavaScript).
 
-### Approximate Elements (Text-only)
-- **SmartArt**: Text hierarchy preserved, visual layout simplified
+Approximated: SmartArt keeps its text hierarchy but loses the visual layout.
 
-### Not Supported
-- Macros and VBA scripts
-- Master slide templates (complex inheritance)
-- Embedded fonts (falls back to web-safe fonts)
-- Complex 3D effects
+Not converted: macros and VBA, master slide templates with complex
+inheritance, embedded fonts (falls back to web-safe fonts), complex 3D effects.
 
 ## Performance
 
-- **Processing Speed**: 1-2 seconds per slide
-- **Memory Usage**: ~100MB for typical presentations
-- **Output Size**: HTML 50-300KB, assets proportional to media
-- **Browser Support**: All modern browsers (Chrome, Firefox, Safari, Edge)
-- **Mobile Support**: Fully responsive with touch navigation
+- 1 to 2 seconds per slide
+- around 100 MB of memory for a typical deck
+- HTML output of 50 to 300 KB, plus assets sized to the media
+- runs in Chrome, Firefox, Safari, and Edge; responsive with touch navigation
 
-## Logging and Reports
+## Logging and reports
 
-Phase 2 includes comprehensive logging:
+Progress goes to the console during the run:
 
-```bash
-# Console output shows progress
+```
 INFO: Processing slide 1...
 INFO: Extracted bar chart
 INFO: Extracted custom arrow shape
 INFO: Processing slide 2...
+```
 
-# Detailed report (markdown)
+The Markdown report summarizes the run:
+
+```markdown
 ## Conversion Statistics
 - Duration: 3.45 seconds
 - Slides processed: 15
@@ -189,83 +164,64 @@ INFO: Processing slide 2...
   - SmartArt: 2
   - Media files: 34
 
-## Status: ✅ SUCCESS
+## Status: SUCCESS
 ```
 
 ## Troubleshooting
 
 **Filename with special characters causing errors?**
-- **macOS/Linux**: Quote the filename when using shell scripts
-  ```bash
-  ./convert.sh "presentation (with spaces).pptx"
-  ./convert.sh "(한글) 파일명.pptx"  # Korean or special characters
-  ```
-- **Windows**: Use quotes in Command Prompt or PowerShell
-  ```cmd
-  convert.bat "presentation (with spaces).pptx"
-  ```
-- **Python directly**: No quoting needed
-  ```bash
-  python scripts/convert_pptx_to_html_v2.py "(한글) 파일명.pptx" output/
-  ```
 
-**Charts not rendering?**
-- Ensure Chart.js CDN is accessible
-- Check browser console for JavaScript errors
-- Verify chart data was extracted (check logs)
+On macOS and Linux, quote the filename when calling the shell scripts:
 
-**Custom shapes appear as rectangles?**
-- Some complex paths may not convert perfectly
-- Check conversion log for warnings
-- Use preset shapes when possible
+```bash
+./convert.sh "presentation (with spaces).pptx"
+./convert.sh "(한글) 파일명.pptx"
+```
 
-**SmartArt looks different?**
-- SmartArt only preserves text content
-- Visual layout is approximated
-- Consider converting complex diagrams to images in PowerPoint first
+On Windows, quote it in Command Prompt or PowerShell:
 
-**High memory usage?**
-- Large presentations with many images may use more memory
-- Try reducing DPI (default: 150, try: 96)
-- Process in batches if needed
+```cmd
+convert.bat "presentation (with spaces).pptx"
+```
+
+Calling Python directly needs no quoting:
+
+```bash
+python scripts/convert_pptx_to_html_v2.py "(한글) 파일명.pptx" output/
+```
+
+**Charts not rendering?** Check that the Chart.js CDN is reachable, look at the
+browser console for JavaScript errors, and confirm from the log that the chart
+data was extracted.
+
+**Custom shapes appear as rectangles?** Some complex paths do not convert.
+Check the conversion log for warnings and prefer preset shapes.
+
+**SmartArt looks different?** Only the text content carries over. For complex
+diagrams, convert them to images inside PowerPoint first.
+
+**High memory usage?** Large decks with many images cost more memory. Lower the
+DPI from 150 to 96, or process the deck in batches.
 
 ## Development
 
-### Running Tests
-
 ```bash
-# Unit tests
-python -m pytest tests/
-
-# Integration tests
-python tests/test_conversion.py
+python -m pytest tests/              # unit tests
+python tests/test_conversion.py      # integration tests
 ```
 
-### Contributing
+When contributing, keep the modular layout, log what each step does, handle
+errors per element rather than aborting the run, update the docs, and add tests.
 
-1. Follow the modular architecture
-2. Add comprehensive logging
-3. Handle errors gracefully
-4. Update documentation
-5. Write tests for new features
+## More documentation
+
+- `SKILL.md` for the full feature reference and API documentation
+- `docs/architecture.md` for technical detail
+- `docs/changelog.md` for version history
+
+For a problem you cannot place, read the conversion log and report first, then
+open an issue with a sample PPTX if you can share one.
 
 ## License
 
-See LICENSE file in repository root.
-
-## Documentation
-
-- **SKILL.md** - Complete feature reference and API documentation
-- **docs/architecture.md** - Technical architecture details
-- **docs/changelog.md** - Version history and changes
-
-## Support
-
-For issues and questions:
-- Check SKILL.md troubleshooting section
-- Review conversion logs and reports
-- Open an issue with sample PPTX file (if possible)
-
----
-
-**Phase 2 Release** - Production-ready PowerPoint to HTML conversion with 98%+ visual fidelity
+See the LICENSE file in the repository root.
