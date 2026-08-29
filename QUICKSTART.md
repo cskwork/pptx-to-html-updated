@@ -1,13 +1,12 @@
-# Quick Start Guide - Phase 2 PPTX to HTML Converter
+# Quick start: Phase 2 PPTX to HTML converter
 
-## 5-Minute Setup
+## Five-minute setup
 
-### 1. Install Dependencies
+### 1. Install dependencies
 
 ```bash
 python3 -m venv path/to/venv
-    source path/to/venv/bin/activate
-    
+source path/to/venv/bin/activate
 pip install -r requirements.txt
 ```
 
@@ -16,7 +15,7 @@ Expected output:
 Successfully installed python-pptx-0.6.23 openpyxl-3.1.2
 ```
 
-### 2. Test the Converter
+### 2. Test the converter
 
 ```bash
 # Create a test output directory
@@ -30,16 +29,16 @@ python scripts/convert_pptx_to_html_v2.py "presentation (with spaces).pptx" test
 python scripts/convert_pptx_to_html_v2.py "(한글) 파일명.pptx" test_output/
 ```
 
-### 3. View Results
+### 3. View results
 
 Open the generated HTML file in your browser:
 ```bash
 open test_output/presentation.html
 ```
 
-## What You'll See
+## What you'll see
 
-### Console Output
+### Console output
 ```
 INFO: Initializing Enhanced PPTX Converter (DPI: 150)
 INFO: Starting conversion: presentation.pptx
@@ -65,7 +64,7 @@ INFO: Conversion complete: test_output/presentation.html
 ============================================================
 ```
 
-### Generated Files
+### Generated files
 
 ```
 test_output/
@@ -85,26 +84,26 @@ test_output/
 - **On-screen Buttons**: Click Previous/Next
 - **Progress Bar**: Shows current position
 
-## Features to Look For
+## Features to look for
 
-### 📊 Charts
-Look for bar charts, line charts, and pie charts - they should render with Chart.js!
+### Charts
+Bar, line, and pie charts render through Chart.js.
 
-### 🎨 Custom Shapes
-Arrows, flowchart elements, and complex shapes now render as SVG.
+### Custom shapes
+Arrows, flowchart elements, and complex shapes render as SVG.
 
-### 🔷 SmartArt
-SmartArt diagrams show text content with hierarchy.
+### SmartArt
+SmartArt diagrams show their text content with the hierarchy intact.
 
-### ✨ Animations
-Elements may fade in or slide in when you navigate to a slide.
+### Animations
+Elements may fade or slide in when you navigate to a slide.
 
-### 🎭 Effects
-Shapes with shadows and reflections should display these effects.
+### Effects
+Shapes with shadows and reflections keep them.
 
 ## Customization
 
-### Change DPI Quality
+### Change DPI quality
 
 ```bash
 # Higher quality (larger files)
@@ -114,7 +113,7 @@ python scripts/convert_pptx_to_html_v2.py input.pptx output/ 300
 python scripts/convert_pptx_to_html_v2.py input.pptx output/ 96
 ```
 
-### Enable Detailed Logging
+### Enable detailed logging
 
 ```bash
 python scripts/convert_pptx_to_html_v2.py input.pptx output/
@@ -123,7 +122,7 @@ python scripts/convert_pptx_to_html_v2.py input.pptx output/
 
 ## Troubleshooting
 
-### Shell Script Errors with Special Characters
+### Shell script errors with special characters
 If you see errors like `zsh: unknown file attribute` or `bash: syntax error`:
 
 ```bash
@@ -138,23 +137,23 @@ If you see errors like `zsh: unknown file attribute` or `bash: syntax error`:
 python scripts/convert_pptx_to_html_v2.py "(동아출판) 파일명.pptx" output/
 ```
 
-### "Module not found" Error
+### "Module not found" error
 ```bash
 # Make sure you installed dependencies
 pip install -r requirements.txt
 ```
 
-### Charts Not Rendering
+### Charts not rendering
 - Check internet connection (Chart.js loads from CDN)
 - Open browser console (F12) for JavaScript errors
 - Verify chart was extracted (check logs for "Extracted chart")
 
-### Shapes Look Wrong
+### Shapes look wrong
 - Some complex custom shapes may approximate
 - Use preset shapes (arrows, flowcharts) for best results
 - Check conversion log for warnings
 
-### Python Version Issues
+### Python version issues
 ```bash
 # Check Python version (need 3.7+)
 python --version
@@ -163,14 +162,14 @@ python --version
 python3.9 scripts/convert_pptx_to_html_v2.py input.pptx output/
 ```
 
-## Next Steps
+## Next steps
 
-1. **Read Full Documentation**: See README.md for complete features
-2. **Review Architecture**: Check docs/architecture.md for technical details
-3. **Browse Changelog**: See docs/changelog.md for all changes
-4. **Check SKILL.md**: Complete API reference and troubleshooting
+- `README.md` covers the full feature set.
+- `docs/architecture.md` explains how the pipeline works.
+- `docs/changelog.md` lists what changed in each version.
+- `SKILL.md` is the API reference and the longer troubleshooting guide.
 
-## Quick Examples
+## Quick examples
 
 ### Python API
 
@@ -191,7 +190,7 @@ converter = EnhancedPPTXToHTMLV2(
 result = converter.convert()
 ```
 
-### Batch Conversion
+### Batch conversion
 
 ```bash
 # Convert multiple presentations
@@ -200,27 +199,22 @@ for file in presentations/*.pptx; do
 done
 ```
 
-## Performance Tips
+## Performance tips
 
-1. **Use appropriate DPI**: 150 is balanced, 72 for speed, 300 for quality
-2. **Clear cache**: Delete output directory between runs
-3. **Monitor logs**: Check conversion.log for warnings
-4. **Test incrementally**: Convert single slides first
+- Pick the DPI for the job: 72 for speed, 150 for balance, 300 for quality.
+- Delete the output directory between runs.
+- Read `conversion.log` for warnings.
+- Convert a single slide first when you are trying something new.
 
-## Support
+## When something goes wrong
 
-- **Documentation**: README.md, SKILL.md
-- **Logs**: Check conversion.log for detailed errors
-- **Reports**: Review presentation_report.md for statistics
-- **Examples**: Test with sample presentations
+Read `conversion.log` for the detailed error and `presentation_report.md` for
+the per-slide statistics. `README.md` and `SKILL.md` cover the rest. If you can
+reproduce the problem with a sample presentation, that makes it much easier to
+diagnose.
 
 ---
 
-✅ **You're ready to convert presentations!**
-
-Start with a simple presentation and explore the Phase 2 features:
-- Charts render with Chart.js
-- Custom shapes use SVG
-- Animations preserve with CSS
-- Higher quality at 150 DPI
-- Comprehensive logging
+Start with a simple presentation. The Phase 2 additions to look for are charts
+via Chart.js, custom shapes as SVG, animations in CSS, 150 DPI images, and a
+full log plus report for every run.
