@@ -2,7 +2,7 @@
 
 Turn a PowerPoint deck into HTML you can open in any browser. Point the converter at a `.pptx` file and you get back a small folder of HTML, CSS and JavaScript that looks and behaves like the original: same text styling, charts, media, animations, even the fonts embedded in the file. It reads the `.pptx` directly (it's just a ZIP of XML), so PowerPoint itself is never needed.
 
-Phase 2, production ready. Python 3.7+.
+Phase 2. Python 3.7+.
 
 🌐 **[Live site](https://cskwork.github.io/pptx-to-html-updated/)** · [Architecture](docs/architecture.md) · [Changelog](docs/changelog.md)
 
@@ -114,7 +114,7 @@ The repo ships a `SKILL.md`, so coding agents that discover skills (Claude Code 
 
 ## More docs
 
-- **[Landing page](https://cskwork.github.io/pptx-to-html-updated/)** — feature tour
-- **[SKILL.md](SKILL.md)** — agent-facing usage
-- **[docs/architecture.md](docs/architecture.md)** — how the pipeline works
-- **[docs/changelog.md](docs/changelog.md)** — version history
+- [Landing page](https://cskwork.github.io/pptx-to-html-updated/) for the feature tour
+- [SKILL.md](SKILL.md) for agent-facing usage
+- [docs/architecture.md](docs/architecture.md) for how the pipeline works
+- [docs/changelog.md](docs/changelog.md) for version history
