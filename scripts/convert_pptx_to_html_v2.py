@@ -16,7 +16,9 @@ Phase 2 Features:
 
 import sys
 import zipfile
+import re
 from pathlib import Path
+import colorsys
 import json
 import html
 import math
@@ -62,6 +64,7 @@ class EnhancedPPTXToHTMLV2:
             'a': 'http://schemas.openxmlformats.org/drawingml/2006/main',
             'r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
             'pic': 'http://schemas.openxmlformats.org/drawingml/2006/picture',
+            'dsp': 'http://schemas.microsoft.com/office/drawing/2008/diagram',
             'p14': 'http://schemas.microsoft.com/office/powerpoint/2010/main',
             'rel': 'http://schemas.openxmlformats.org/package/2006/relationships',
             'c': 'http://schemas.openxmlformats.org/drawingml/2006/chart'
@@ -74,6 +77,10 @@ class EnhancedPPTXToHTMLV2:
         self.chart_counter = 0
         self.z_index_counter = 1
         self.theme_colors = self._default_theme_colors()
+        self.theme_fonts = self._default_theme_fonts()
+        self.theme_line_widths: List[float] = []
+        self.font_stacks: Dict[str, str] = {}
+        self.table_styles: Dict[str, ET.Element] = {}
         self.theme_background_fills: List[Dict] = []
         self.layout_background_cache: Dict[str, Optional[Dict]] = {}
         self.master_background_cache: Dict[str, Optional[Dict]] = {}
@@ -115,8 +122,23 @@ class EnhancedPPTXToHTMLV2:
             'folHlink': '#954F72'
         }
 
+    @staticmethod
+    def _default_theme_fonts() -> Dict[str, str]:
+        """테마 폰트 기본값 초기화"""
+        return {'major': 'Calibri Light', 'minor': 'Calibri'}
+
+    def _resolve_typeface(self, typeface: Optional[str]) -> Optional[str]:
+        """+mj-lt / +mn-lt 테마 참조를 실제 폰트 이름으로 치환"""
+        if not typeface:
+            return None
+        if typeface.startswith('+mj'):
+            return self.theme_fonts.get('major')
+        if typeface.startswith('+mn'):
+            return self.theme_fonts.get('minor')
+        return typeface
+
     def _load_theme(self, zip_ref):
-        """프레젠테이션 테마 컬러 및 배경 스타일 로드"""
+        """프레젠테이션 테마 컬러/폰트 및 배경 스타일 로드"""
         try:
             pres_rels = ET.fromstring(zip_ref.read('ppt/_rels/presentation.xml.rels'))
         except KeyError:
@@ -146,6 +168,17 @@ class EnhancedPPTXToHTMLV2:
                 resolved = self._resolve_color(color_child, self.theme_colors)
                 if resolved:
                     self.theme_colors[name] = resolved
+
+        for scheme_key, element_name in (('major', 'majorFont'), ('minor', 'minorFont')):
+            latin = theme_xml.find(f'.//a:themeElements/a:fontScheme/a:{element_name}/a:latin', self.ns)
+            if latin is not None and latin.get('typeface'):
+                self.theme_fonts[scheme_key] = latin.get('typeface')
+
+        ln_style_lst = theme_xml.find('.//a:themeElements/a:fmtScheme/a:lnStyleLst', self.ns)
+        if ln_style_lst is not None:
+            self.theme_line_widths = [
+                self.emu_to_layout_px(int(ln.get('w', 0))) for ln in ln_style_lst.findall('a:ln', self.ns)
+            ]
 
         bg_fill_lst = theme_xml.find('.//a:themeElements/a:fmtScheme/a:bgFillStyleLst', self.ns)
         background_fills: List[Dict] = []
@@ -184,14 +217,14 @@ class EnhancedPPTXToHTMLV2:
         return max(0, min(255, int(round(value))))
 
     def _apply_color_modifiers(self, base_hex: str, modifier_elem: ET.Element) -> str:
-        """색상 수정 요소(lumMod, tint 등)를 적용"""
+        """색상 수정 요소(lumMod, hueOff, tint 등)를 문서 순서대로 적용"""
         base_hex = base_hex.lstrip('#') or '000000'
-        r = int(base_hex[0:2], 16)
-        g = int(base_hex[2:4], 16)
-        b = int(base_hex[4:6], 16)
+        r = int(base_hex[0:2], 16) / 255.0
+        g = int(base_hex[2:4], 16) / 255.0
+        b = int(base_hex[4:6], 16) / 255.0
+        alpha = 1.0
 
-        lum_mod = 1.0
-        lum_off = 0.0
+        hsl_ops = {'hueMod', 'hueOff', 'satMod', 'satOff', 'lumMod', 'lumOff'}
 
         for child in list(modifier_elem):
             tag = self._strip_namespace(child.tag)
@@ -203,27 +236,47 @@ class EnhancedPPTXToHTMLV2:
             except ValueError:
                 continue
 
-            if tag == 'lumMod':
-                lum_mod *= raw_val / 100000
-            elif tag == 'lumOff':
-                lum_off += raw_val / 100000
+            if tag in hsl_ops:
+                hue, lum, sat = colorsys.rgb_to_hls(r, g, b)
+                if tag == 'hueMod':
+                    hue = (hue * (raw_val / 100000)) % 1.0
+                elif tag == 'hueOff':
+                    # ST_Angle: 60000분의 1도
+                    hue = (hue + raw_val / 60000 / 360.0) % 1.0
+                elif tag == 'satMod':
+                    sat = sat * (raw_val / 100000)
+                elif tag == 'satOff':
+                    sat = sat + raw_val / 100000
+                elif tag == 'lumMod':
+                    lum = lum * (raw_val / 100000)
+                elif tag == 'lumOff':
+                    lum = lum + raw_val / 100000
+                r, g, b = colorsys.hls_to_rgb(hue, min(1.0, max(0.0, lum)), min(1.0, max(0.0, sat)))
             elif tag == 'tint':
+                # 10% tint = 원본 10% + 흰색 90%
                 ratio = raw_val / 100000
-                r = self._clamp_color(r + (255 - r) * ratio)
-                g = self._clamp_color(g + (255 - g) * ratio)
-                b = self._clamp_color(b + (255 - b) * ratio)
+                r = r * ratio + (1 - ratio)
+                g = g * ratio + (1 - ratio)
+                b = b * ratio + (1 - ratio)
             elif tag == 'shade':
-                ratio = 1 - (raw_val / 100000)
-                r = self._clamp_color(r * ratio)
-                g = self._clamp_color(g * ratio)
-                b = self._clamp_color(b * ratio)
+                ratio = raw_val / 100000
+                r *= ratio
+                g *= ratio
+                b *= ratio
+            elif tag == 'alpha':
+                alpha = raw_val / 100000
+            elif tag == 'alphaOff':
+                alpha += raw_val / 100000
 
-        if lum_mod != 1.0 or lum_off != 0.0:
-            r = self._clamp_color(r * lum_mod + 255 * lum_off)
-            g = self._clamp_color(g * lum_mod + 255 * lum_off)
-            b = self._clamp_color(b * lum_mod + 255 * lum_off)
-
-        return f"#{r:02X}{g:02X}{b:02X}"
+        hex_color = (
+            f"#{self._clamp_color(r * 255):02X}"
+            f"{self._clamp_color(g * 255):02X}"
+            f"{self._clamp_color(b * 255):02X}"
+        )
+        alpha = min(1.0, max(0.0, alpha))
+        if alpha < 1.0:
+            hex_color += f"{self._clamp_color(alpha * 255):02X}"
+        return hex_color
 
     def _resolve_color(self, color_elem: ET.Element, theme_map: Dict[str, str]) -> Optional[str]:
         """색상 요소를 실제 HEX 값으로 해석"""
@@ -451,6 +504,9 @@ class EnhancedPPTXToHTMLV2:
         if merged.get('rotation') is None:
             merged['rotation'] = 0.0
 
+        merged['pivot_x'] = merged['x'] + self._safe_dimension(merged.get('width')) / 2.0
+        merged['pivot_y'] = merged['y'] + self._safe_dimension(merged.get('height')) / 2.0
+
         return merged
 
     def _ensure_position_defaults(self, position: Optional[Dict]) -> Dict:
@@ -544,17 +600,17 @@ class EnhancedPPTXToHTMLV2:
             if rot:
                 position['rotation'] = int(rot) / 60000
 
-        if position['width'] and position['height']:
-            position['pivot_x'] = position['x'] + position['width'] / 2.0
-            position['pivot_y'] = position['y'] + position['height'] / 2.0
-        else:
-            position['pivot_x'] = position['x']
-            position['pivot_y'] = position['y']
+            position['flip_h'] = xfrm.get('flipH') in ('1', 'true')
+            position['flip_v'] = xfrm.get('flipV') in ('1', 'true')
+
+        # 선처럼 폭/높이가 0인 도형도 중심이 피벗이어야 한다
+        position['pivot_x'] = position['x'] + position['width'] / 2.0
+        position['pivot_y'] = position['y'] + position['height'] / 2.0
 
         return position
 
-    def extract_shape_fill(self, sp_pr) -> Dict:
-        """도형 채우기 추출"""
+    def extract_shape_fill(self, sp_pr, style_elem=None) -> Dict:
+        """도형 채우기 추출 (명시적 채우기가 없으면 p:style/a:fillRef 상속)"""
         fill = {
             'type': 'none',
             'color': '#FFFFFF',
@@ -566,35 +622,25 @@ class EnhancedPPTXToHTMLV2:
         if sp_pr is None:
             return fill
 
-        solid = sp_pr.find('.//a:solidFill', self.ns)
+        solid = sp_pr.find('a:solidFill', self.ns)
         if solid is not None:
             fill['type'] = 'solid'
             fill['color'] = self.color_to_hex(solid)
             return fill
 
-        blip_fill = sp_pr.find('.//a:blipFill', self.ns)
+        blip_fill = sp_pr.find('a:blipFill', self.ns)
         if blip_fill is not None:
             blip = blip_fill.find('a:blip', self.ns)
             if blip is not None:
-                rel_id = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
-                src_rect = blip_fill.find('a:srcRect', self.ns)
-                crop = {}
-                if src_rect is not None:
-                    for attr in ('l', 'r', 't', 'b'):
-                        if src_rect.get(attr) is not None:
-                            try:
-                                crop[attr] = int(src_rect.get(attr)) / 100000
-                            except ValueError:
-                                continue
-                stretch = blip_fill.find('a:stretch', self.ns) is not None
+                rel_id = self._blip_embed_id(blip)
                 return {
                     'type': 'image',
                     'rel_id': rel_id,
-                    'crop': crop,
-                    'stretch': stretch
+                    'crop': self._extract_source_crop(blip_fill),
+                    'stretch': blip_fill.find('a:stretch', self.ns) is not None
                 }
 
-        grad = sp_pr.find('.//a:gradFill', self.ns)
+        grad = sp_pr.find('a:gradFill', self.ns)
         if grad is not None:
             fill['type'] = 'gradient'
             stops = []
@@ -616,20 +662,32 @@ class EnhancedPPTXToHTMLV2:
             fill['gradient'] = stops
             return fill
 
-        no_fill = sp_pr.find('.//a:noFill', self.ns)
+        no_fill = sp_pr.find('a:noFill', self.ns)
         if no_fill is not None:
             fill['type'] = 'none'
+            return fill
+
+        fill_ref = style_elem.find('a:fillRef', self.ns) if style_elem is not None else None
+        if fill_ref is not None and (fill_ref.get('idx') or '0') != '0':
+            resolved = self._resolve_color(fill_ref, self.theme_colors)
+            if resolved:
+                fill['type'] = 'solid'
+                fill['color'] = resolved
 
         return fill
 
-    def extract_shape_border(self, sp_pr) -> Dict:
-        """도형 테두리 추출"""
+    def extract_shape_border(self, sp_pr, style_elem=None) -> Dict:
+        """도형 테두리 추출 (명시적 a:ln 이 없으면 p:style/a:lnRef 상속)"""
         border = {'width': 0, 'color': '#000000', 'style': 'solid'}
 
         if sp_pr is None:
             return border
 
         ln = sp_pr.find('.//a:ln', self.ns)
+        if ln is not None and ln.find('a:noFill', self.ns) is not None:
+            return border
+
+        explicit_color = False
         if ln is not None:
             w = ln.get('w')
             if w:
@@ -638,13 +696,181 @@ class EnhancedPPTXToHTMLV2:
             solid = ln.find('.//a:solidFill', self.ns)
             if solid is not None:
                 border['color'] = self.color_to_hex(solid)
+                explicit_color = True
 
             dash = ln.find('.//a:prstDash', self.ns)
             if dash is not None:
-                dash_val = dash.get('val', 'solid')
-                border['style'] = 'dashed' if 'dash' in dash_val else 'solid'
+                border['style'] = self._dash_to_css(dash.get('val', 'solid'))
+
+        ln_ref = style_elem.find('a:lnRef', self.ns) if style_elem is not None else None
+        if ln_ref is not None:
+            if not border['width']:
+                border['width'] = self._theme_line_width(ln_ref.get('idx'))
+            if not explicit_color:
+                resolved = self._resolve_color(ln_ref, self.theme_colors)
+                if resolved:
+                    border['color'] = resolved
 
         return border
+
+    def _theme_line_width(self, idx: Optional[str]) -> float:
+        """lnRef idx(1기반)에 해당하는 테마 선 굵기"""
+        try:
+            position = int(idx or 0)
+        except ValueError:
+            return 0.0
+        if 1 <= position <= len(self.theme_line_widths):
+            return self.theme_line_widths[position - 1]
+        return 0.0
+
+    @staticmethod
+    def _dash_to_css(dash_val: str) -> str:
+        """prstDash 값을 CSS border-style로 변환"""
+        if dash_val in ('dot', 'sysDot'):
+            return 'dotted'
+        if dash_val == 'solid' or not dash_val:
+            return 'solid'
+        return 'dashed'
+
+    ARROW_SIZES = {'sm': 2.0, 'med': 3.0, 'lg': 4.0}
+
+    def _diagram_text_transform(self, shape, sp_pr) -> Optional[Dict]:
+        """SmartArt는 dsp:txXfrm 으로 본문을 따로 배치한다 (회전은 도형 기준 상대값)"""
+        tx_xfrm = shape.find('dsp:txXfrm', self.ns)
+        shape_xfrm = sp_pr.find('a:xfrm', self.ns) if sp_pr is not None else None
+        if tx_xfrm is None or shape_xfrm is None:
+            return None
+
+        try:
+            rotation = int(tx_xfrm.get('rot', 0)) / 60000
+        except ValueError:
+            return None
+        if not rotation:
+            return None
+
+        text_ext = tx_xfrm.find('a:ext', self.ns)
+        shape_ext = shape_xfrm.find('a:ext', self.ns)
+        if text_ext is None or shape_ext is None:
+            return None
+
+        try:
+            shape_cx = int(shape_ext.get('cx', 0))
+            shape_cy = int(shape_ext.get('cy', 0))
+            text_cx = int(text_ext.get('cx', 0))
+            text_cy = int(text_ext.get('cy', 0))
+        except ValueError:
+            return None
+        if not shape_cx or not shape_cy:
+            return None
+
+        # 그룹 변환으로 크기가 바뀌어도 따라가도록 비율로 보관한다
+        return {
+            'rotation': rotation,
+            'width_ratio': text_cx / shape_cx,
+            'height_ratio': text_cy / shape_cy,
+        }
+
+    def _extract_connector(self, sp_pr) -> Dict:
+        """연결선 지오메트리와 화살표 끝 모양 추출"""
+        connector = {'preset': 'line', 'adjust': {}, 'head': None, 'tail': None}
+
+        if sp_pr is None:
+            return connector
+
+        prst_geom = sp_pr.find('a:prstGeom', self.ns)
+        if prst_geom is not None:
+            connector['preset'] = prst_geom.get('prst', 'line')
+            for gd in prst_geom.findall('a:avLst/a:gd', self.ns):
+                fmla = gd.get('fmla', '')
+                if gd.get('name') and fmla.startswith('val '):
+                    try:
+                        connector['adjust'][gd.get('name')] = float(fmla[4:])
+                    except ValueError:
+                        continue
+
+        ln = sp_pr.find('a:ln', self.ns)
+        if ln is not None:
+            for key, tag in (('head', 'a:headEnd'), ('tail', 'a:tailEnd')):
+                end = ln.find(tag, self.ns)
+                if end is not None and end.get('type', 'none') != 'none':
+                    connector[key] = {
+                        'width': self.ARROW_SIZES.get(end.get('w', 'med'), 3.0),
+                        'length': self.ARROW_SIZES.get(end.get('len', 'med'), 3.0)
+                    }
+
+        return connector
+
+    def _connector_path(self, preset: str, adjust: Dict[str, float],
+                        origin: float, width: float, height: float) -> str:
+        """연결선 프리셋을 SVG 경로로 변환 (좌표는 실제 픽셀)"""
+        x1, y1 = origin, origin
+        x2, y2 = origin + width, origin + height
+
+        if preset == 'bentConnector2':
+            return f"M {x1:.2f} {y1:.2f} L {x2:.2f} {y1:.2f} L {x2:.2f} {y2:.2f}"
+
+        if preset == 'bentConnector3':
+            # adj1은 100000 = 폭 100%, 100%를 넘으면 연결선이 도형 밖으로 꺾인다
+            mid = x1 + width * adjust.get('adj1', 50000.0) / 100000.0
+            return (
+                f"M {x1:.2f} {y1:.2f} L {mid:.2f} {y1:.2f} "
+                f"L {mid:.2f} {y2:.2f} L {x2:.2f} {y2:.2f}"
+            )
+
+        return f"M {x1:.2f} {y1:.2f} L {x2:.2f} {y2:.2f}"
+
+    def _build_connector_svg(self, element: Dict) -> str:
+        """연결선을 화살표 포함 SVG로 렌더링"""
+        connector = element['connector']
+        pos = element.get('position', {})
+        border = element.get('border', {})
+
+        width = max(self._safe_dimension(pos.get('width')), 0.0)
+        height = max(self._safe_dimension(pos.get('height')), 0.0)
+        stroke_width = border.get('width') or 1.0
+        stroke = border.get('color', '#000000')
+
+        # 화살표와 꺾임이 도형 밖으로 나가므로 여백을 둔 캔버스를 쓴다
+        pad = max(stroke_width * 6.0, 12.0)
+        path = self._connector_path(
+            connector.get('preset', 'line'), connector.get('adjust', {}), pad, width, height
+        )
+
+        dash = ''
+        style = border.get('style', 'solid')
+        if style == 'dotted':
+            dash = f' stroke-dasharray="{stroke_width:.2f} {stroke_width * 2:.2f}"'
+        elif style == 'dashed':
+            dash = f' stroke-dasharray="{stroke_width * 4:.2f} {stroke_width * 3:.2f}"'
+
+        marker_id_base = f"arrow{element.get('z_index', 0)}"
+        defs = []
+        markers = ''
+        for key, attr in (('head', 'marker-start'), ('tail', 'marker-end')):
+            end = connector.get(key)
+            if not end:
+                continue
+            marker_id = f"{marker_id_base}{key}"
+            defs.append(
+                f'<marker id="{marker_id}" viewBox="0 0 10 10" refX="9" refY="5" '
+                f'markerWidth="{end["length"]:.1f}" markerHeight="{end["width"]:.1f}" '
+                f'orient="auto-start-reverse" markerUnits="strokeWidth">'
+                f'<path d="M 0 0 L 10 5 L 0 10 z" fill="{stroke}" /></marker>'
+            )
+            markers += f' {attr}="url(#{marker_id})"'
+
+        defs_markup = f'<defs>{"".join(defs)}</defs>' if defs else ''
+
+        return (
+            f'<svg viewBox="0 0 {width + pad * 2:.2f} {height + pad * 2:.2f}" '
+            'xmlns="http://www.w3.org/2000/svg" '
+            f'style="position: absolute; left: {-pad:.2f}px; top: {-pad:.2f}px; '
+            f'width: {width + pad * 2:.2f}px; height: {height + pad * 2:.2f}px; '
+            'overflow: visible; pointer-events: none;">'
+            f'{defs_markup}'
+            f'<path d="{path}" fill="none" stroke="{stroke}" '
+            f'stroke-width="{stroke_width:.2f}"{dash}{markers} /></svg>'
+        )
 
     # === 텍스트 추출 (하이퍼링크 포함) ===
 
@@ -675,7 +901,8 @@ class EnhancedPPTXToHTMLV2:
         spc_pct = ln_spc_elem.find('a:spcPct', self.ns)
         if spc_pct is not None and spc_pct.get('val'):
             try:
-                value = int(spc_pct.get('val')) / 100000
+                # PowerPoint의 배수 행간은 "단일 행간(≈1.2em)"에 대한 비율
+                value = int(spc_pct.get('val')) / 100000 * 1.2
                 return {'value': value, 'unit': 'multiple'}
             except ValueError:
                 return None
@@ -702,16 +929,21 @@ class EnhancedPPTXToHTMLV2:
             except ValueError:
                 return 0.0
 
+        return 0.0
+
+    def _parse_spacing_percent(self, spc_elem) -> Optional[float]:
+        """비율 기반 문단 간격 (문단 글자 크기 기준이므로 런 파싱 후 해석)"""
+        if spc_elem is None:
+            return None
+
         spc_pct = spc_elem.find('a:spcPct', self.ns)
         if spc_pct is not None and spc_pct.get('val'):
             try:
-                percent = int(spc_pct.get('val')) / 1000  # 예: 120000 -> 120%
-                default_line_height = self._hpt_to_px(1200)  # 약 12pt
-                return default_line_height * (percent / 100)
+                return int(spc_pct.get('val')) / 100000
             except ValueError:
-                return 0.0
+                return None
 
-        return 0.0
+        return None
 
     def _parse_paragraph_properties(self, p_pr, level_hint: int) -> Dict:
         """문단 속성 파싱"""
@@ -728,7 +960,13 @@ class EnhancedPPTXToHTMLV2:
 
         space_before = 0.0
         space_after = 0.0
+        space_before_pct = None
+        space_after_pct = None
         line_spacing = None
+
+        bullet_size_pct = None
+        bullet_size_pts = None
+        bullet_color = None
 
         if p_pr is not None:
             align = p_pr.get('algn')
@@ -764,6 +1002,24 @@ class EnhancedPPTXToHTMLV2:
                     if bu_font is not None:
                         bullet_font = bu_font.get('typeface')
 
+                bu_sz_pct = p_pr.find('a:buSzPct', self.ns)
+                if bu_sz_pct is not None and bu_sz_pct.get('val'):
+                    try:
+                        bullet_size_pct = int(bu_sz_pct.get('val')) / 100000
+                    except ValueError:
+                        bullet_size_pct = None
+
+                bu_sz_pts = p_pr.find('a:buSzPts', self.ns)
+                if bu_sz_pts is not None and bu_sz_pts.get('val'):
+                    try:
+                        bullet_size_pts = int(bu_sz_pts.get('val')) / 100
+                    except ValueError:
+                        bullet_size_pts = None
+
+                bu_clr = p_pr.find('a:buClr', self.ns)
+                if bu_clr is not None:
+                    bullet_color = self.color_to_hex(bu_clr)
+
             mar_l = p_pr.get('marL')
             if mar_l is not None:
                 try:
@@ -787,6 +1043,8 @@ class EnhancedPPTXToHTMLV2:
 
             space_before = self._parse_spacing(p_pr.find('a:spcBef', self.ns))
             space_after = self._parse_spacing(p_pr.find('a:spcAft', self.ns))
+            space_before_pct = self._parse_spacing_percent(p_pr.find('a:spcBef', self.ns))
+            space_after_pct = self._parse_spacing_percent(p_pr.find('a:spcAft', self.ns))
             line_spacing = self._parse_line_spacing(p_pr.find('a:lnSpc', self.ns))
 
         if margin_left is None:
@@ -798,16 +1056,55 @@ class EnhancedPPTXToHTMLV2:
             'list_type': list_type,
             'bullet_char': bullet_char,
             'bullet_font': bullet_font,
+            'bullet_size_pct': bullet_size_pct,
+            'bullet_size_pts': bullet_size_pts,
+            'bullet_color': bullet_color,
             'numbering': numbering,
             'margin_left': margin_left,
             'margin_right': margin_right or 0.0,
             'text_indent': text_indent,
             'space_before': space_before,
             'space_after': space_after,
+            'space_before_pct': space_before_pct,
+            'space_after_pct': space_after_pct,
+            'default_run': self._parse_run_properties(p_pr.find('a:defRPr', self.ns)) if p_pr is not None else {},
             'line_spacing': line_spacing
         }
 
-    def _parse_text_run(self, run_elem, zip_ref=None, slide_rels_path=None) -> Optional[Dict]:
+    def _parse_run_properties(self, r_pr) -> Dict:
+        """rPr/defRPr에서 명시적으로 지정된 서식만 추출"""
+        props: Dict = {}
+        if r_pr is None:
+            return props
+
+        for tag in ('a:latin', 'a:ea'):
+            font_elem = r_pr.find(tag, self.ns)
+            if font_elem is not None and font_elem.get('typeface'):
+                props['font_family'] = self._resolve_typeface(font_elem.get('typeface'))
+
+        sz = r_pr.get('sz')
+        if sz:
+            try:
+                props['font_size'] = int(sz) / 100
+            except ValueError:
+                pass
+
+        solid = r_pr.find('a:solidFill', self.ns)
+        if solid is not None:
+            props['color'] = self.color_to_hex(solid)
+            props['explicit_color'] = True
+
+        if r_pr.get('b') is not None:
+            props['bold'] = r_pr.get('b') in ('1', 'true')
+        if r_pr.get('i') is not None:
+            props['italic'] = r_pr.get('i') in ('1', 'true')
+        if r_pr.get('u') is not None:
+            props['underline'] = r_pr.get('u') != 'none'
+
+        return props
+
+    def _parse_text_run(self, run_elem, zip_ref=None, slide_rels_path=None,
+                        paragraph_defaults: Optional[Dict] = None) -> Optional[Dict]:
         """텍스트 런 파싱"""
         t = run_elem.find('a:t', self.ns)
         if t is None or t.text is None:
@@ -822,48 +1119,26 @@ class EnhancedPPTXToHTMLV2:
         default_text_color = self.theme_colors.get('tx1', '#000000')
 
         formatting = {
-            'font_family': 'Arial',
+            'font_family': None,
             'font_size': 18,
             'color': default_text_color,
             'bold': False,
             'italic': False,
             'underline': False
         }
+        formatting.update(paragraph_defaults or {})
+        formatting.update(self._parse_run_properties(r_pr))
 
         hyperlink = None
 
-        if r_pr is not None:
-            latin = r_pr.find('.//a:latin', self.ns)
-            if latin is not None:
-                formatting['font_family'] = latin.get('typeface', 'Arial')
-
-            ea = r_pr.find('.//a:ea', self.ns)
-            if ea is not None and ea.get('typeface'):
-                formatting['font_family'] = ea.get('typeface')
-
-            sz = r_pr.get('sz')
-            if sz:
-                try:
-                    formatting['font_size'] = int(sz) / 100
-                except ValueError:
-                    formatting['font_size'] = 18
-
-            solid = r_pr.find('.//a:solidFill', self.ns)
-            if solid is not None:
-                formatting['color'] = self.color_to_hex(solid)
-
-            formatting['bold'] = r_pr.get('b') == '1'
-            formatting['italic'] = r_pr.get('i') == '1'
-            formatting['underline'] = r_pr.get('u') != 'none' if r_pr.get('u') else False
-
-            if zip_ref and slide_rels_path:
-                hlink = r_pr.find('.//a:hlinkClick', self.ns)
-                if hlink is not None:
-                    rel_id = hlink.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
-                    if rel_id:
-                        target, _ = self.resolve_relationship(zip_ref, slide_rels_path, rel_id)
-                        if target:
-                            hyperlink = target
+        if r_pr is not None and zip_ref and slide_rels_path:
+            hlink = r_pr.find('.//a:hlinkClick', self.ns)
+            if hlink is not None:
+                rel_id = hlink.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
+                if rel_id:
+                    target, _ = self.resolve_relationship(zip_ref, slide_rels_path, rel_id)
+                    if target:
+                        hyperlink = target
 
         return {
             'text': text,
@@ -996,6 +1271,8 @@ class EnhancedPPTXToHTMLV2:
         pos['rotation'] = pos.get('rotation', 0.0) + rotation
         pos['pivot_x'] = pivot_x
         pos['pivot_y'] = pivot_y
+        pos['flip_h'] = position.get('flip_h', False)
+        pos['flip_v'] = position.get('flip_v', False)
 
         return pos
 
@@ -1015,7 +1292,18 @@ class EnhancedPPTXToHTMLV2:
 
         for para in paragraphs:
             runs = para.get('runs', [])
-            if not runs:
+            if not runs and not para.get('is_empty'):
+                continue
+
+            if para.get('is_empty'):
+                spacer_styles = [
+                    f"margin-top: {para.get('space_before', 0.0):.2f}px",
+                    f"margin-bottom: {para.get('space_after', 0.0):.2f}px",
+                    f"font-size: {para.get('empty_font_size', 18)}pt"
+                ]
+                html_parts.append(
+                    f'<p class="ppt-paragraph" style="{"; ".join(spacer_styles)}"><br></p>'
+                )
                 continue
 
             bullet_text = None
@@ -1045,10 +1333,13 @@ class EnhancedPPTXToHTMLV2:
             margin_right = para.get('margin_right', 0.0)
             text_indent = para.get('text_indent', 0.0)
 
-            para_styles.append(f"margin-left: {margin_left:.2f}px")
+            # marL + 음수 indent = 글머리 위치, marL = 본문 시작 위치
+            hanging_indent = bullet_text is not None and text_indent < 0
+
+            para_styles.append(f"margin-left: {(margin_left + text_indent) if hanging_indent else margin_left:.2f}px")
             para_styles.append(f"margin-right: {margin_right:.2f}px")
 
-            if text_indent:
+            if text_indent and not hanging_indent:
                 para_styles.append(f"text-indent: {text_indent:.2f}px")
 
             line_spacing = para.get('line_spacing')
@@ -1061,9 +1352,10 @@ class EnhancedPPTXToHTMLV2:
             if bullet_text is not None:
                 para_styles.extend([
                     "display: flex",
-                    "gap: 8px",
-                    "align-items: flex-start"
+                    "align-items: baseline"
                 ])
+                if not hanging_indent:
+                    para_styles.append("gap: 8px")
                 if not wrap_text:
                     para_styles.append("white-space: nowrap")
             else:
@@ -1077,7 +1369,7 @@ class EnhancedPPTXToHTMLV2:
 
                 fmt = run.get('formatting', {})
                 span_styles = [
-                    f"font-family: '{fmt.get('font_family', 'Arial')}'",
+                    f"font-family: {self._font_stack(fmt.get('font_family'))}",
                     f"font-size: {fmt.get('font_size', 18)}pt",
                     f"color: {fmt.get('color', '#000000')}"
                 ]
@@ -1105,9 +1397,30 @@ class EnhancedPPTXToHTMLV2:
                 continue
 
             if bullet_text is not None:
-                bullet_styles = ["flex: 0 0 auto", "min-width: 24px"]
+                first_fmt = next((run.get('formatting', {}) for run in runs if not run.get('is_break')), {})
+                try:
+                    base_pt = float(first_fmt.get('font_size', 18) or 18)
+                except (TypeError, ValueError):
+                    base_pt = 18.0
+
+                if para.get('bullet_size_pts'):
+                    bullet_pt = para['bullet_size_pts']
+                elif para.get('bullet_size_pct'):
+                    bullet_pt = base_pt * para['bullet_size_pct']
+                else:
+                    bullet_pt = base_pt
+
+                bullet_styles = [
+                    "flex: 0 0 auto",
+                    f"font-size: {bullet_pt:.1f}pt",
+                    f"color: {para.get('bullet_color') or first_fmt.get('color', '#000000')}"
+                ]
+                if hanging_indent:
+                    bullet_styles.append(f"width: {-text_indent:.2f}px")
+                else:
+                    bullet_styles.append("min-width: 24px")
                 if bullet_font:
-                    bullet_styles.append(f"font-family: '{bullet_font}'")
+                    bullet_styles.append(f"font-family: {self._font_stack(bullet_font)}")
                 bullet_html = f'<span class="ppt-bullet" style="{"; ".join(bullet_styles)}">{self._escape_html(bullet_text)}</span>'
                 text_container = (
                     f'<span class="ppt-run-container" '
@@ -1152,7 +1465,7 @@ class EnhancedPPTXToHTMLV2:
 
         body_pr = shape.find('.//a:bodyPr', self.ns)
         anchor = 't'
-        padding = {'left': 0.0, 'right': 0.0, 'top': 0.0, 'bottom': 0.0}
+        padding = {side: self.emu_to_layout_px(emu) for side, emu in self.DEFAULT_TEXT_INSETS.items()}
         wrap_text = True
         if body_pr is not None:
             if body_pr.get('anchor'):
@@ -1168,81 +1481,56 @@ class EnhancedPPTXToHTMLV2:
             if wrap_attr and wrap_attr.lower() == 'none':
                 wrap_text = False
 
+        style_color = self._shape_style_font_color(shape)
+        default_typeface = self._shape_default_typeface(shape)
+
         for p in shape.findall('.//a:p', self.ns):
             p_pr = p.find('a:pPr', self.ns)
             paragraph_info = self._parse_paragraph_properties(p_pr, level_hint=0)
             runs = []
+            run_defaults = paragraph_info.get('default_run') or {}
 
             for child in p:
                 tag = self._strip_namespace(child.tag)
                 if tag == 'r':
-                    run_data = self._parse_text_run(child, zip_ref, slide_rels_path)
+                    run_data = self._parse_text_run(child, zip_ref, slide_rels_path, run_defaults)
                     if run_data:
                         runs.append(run_data)
                 elif tag == 'br':
                     runs.append({'text': '<br/>', 'is_break': True})
                 elif tag == 'fld':
                     for fld_run in child.findall('.//a:r', self.ns):
-                        run_data = self._parse_text_run(fld_run, zip_ref, slide_rels_path)
+                        run_data = self._parse_text_run(fld_run, zip_ref, slide_rels_path, run_defaults)
                         if run_data:
                             runs.append(run_data)
 
+            if style_color:
+                for run_data in runs:
+                    fmt = run_data.get('formatting')
+                    if fmt and not fmt.get('explicit_color'):
+                        fmt['color'] = style_color
+
+            for run_data in runs:
+                fmt = run_data.get('formatting')
+                if fmt and not fmt.get('font_family'):
+                    fmt['font_family'] = default_typeface
+
             if runs:
                 paragraph_info['runs'] = runs
-                paragraphs.append(paragraph_info)
-
-        estimated_height = 0.0
-        max_font_px = 0.0
-        total_lines = 0
-
-        for para in paragraphs:
-            runs = para.get('runs', [])
-            if not runs:
-                continue
-
-            para_max_pt = 0.0
-            explicit_breaks = 0
-            for run in runs:
-                if run.get('is_break'):
-                    explicit_breaks += 1
-                    continue
-                fmt = run.get('formatting', {})
-                try:
-                    para_max_pt = max(para_max_pt, float(fmt.get('font_size', 18)))
-                except (TypeError, ValueError):
-                    para_max_pt = max(para_max_pt, 18.0)
-
-            if para_max_pt <= 0.0:
-                para_max_pt = 18.0
-
-            para_max_px = self._pt_to_px(para_max_pt)
-            max_font_px = max(max_font_px, para_max_px)
-
-            line_count = explicit_breaks + 1
-            line_spacing = para.get('line_spacing')
-            if line_spacing:
-                if line_spacing.get('unit') == 'multiple':
-                    line_height_px = para_max_px * line_spacing['value']
-                else:
-                    line_height_px = float(line_spacing['value'])
+                self._resolve_percent_spacing(paragraph_info, runs)
             else:
-                line_height_px = para_max_px * 1.15
+                paragraph_info['runs'] = []
+                paragraph_info['is_empty'] = True
+                paragraph_info['empty_font_size'] = self._end_para_font_size(p)
+            paragraphs.append(paragraph_info)
 
-            para_height = line_height_px * line_count
-            para_height += para.get('space_before', 0.0) + para.get('space_after', 0.0)
+        # 앞뒤의 빈 문단은 눈에 보이는 여백을 만들지 않으므로 제거
+        while paragraphs and paragraphs[0].get('is_empty'):
+            paragraphs.pop(0)
+        while paragraphs and paragraphs[-1].get('is_empty'):
+            paragraphs.pop()
 
-            estimated_height += para_height
-            total_lines += line_count
-
-        text_props = {
-            'wrap_text': wrap_text,
-            'estimated_height': estimated_height,
-            'max_font_px': max_font_px,
-            'line_count': total_lines,
-            'paragraph_count': len(paragraphs)
-        }
-
-        return paragraphs, anchor, padding, text_props
+        return paragraphs, anchor, padding, {'wrap_text': wrap_text}
 
     # === 미디어 추출 (이미지, 비디오, 오디오) - DPI 향상 ===
 
@@ -1310,24 +1598,56 @@ class EnhancedPPTXToHTMLV2:
                 width = int(grid_col.get('w', 0))
                 table_data['col_widths'].append(self.emu_to_layout_px(width))
 
-        for tr in tbl.findall('.//a:tr', self.ns):
+        tbl_pr = tbl.find('a:tblPr', self.ns)
+        flags = {}
+        style_elem = None
+        if tbl_pr is not None:
+            for flag in ('firstRow', 'lastRow', 'firstCol', 'lastCol', 'bandRow', 'bandCol'):
+                flags[flag] = tbl_pr.get(flag) in ('1', 'true')
+            style_id = tbl_pr.find('a:tableStyleId', self.ns)
+            if style_id is not None and style_id.text:
+                style_elem = self.table_styles.get(style_id.text.strip())
+
+        rows = tbl.findall('.//a:tr', self.ns)
+        row_count = len(rows)
+        col_count = max(1, len(table_data['col_widths']))
+
+        for row_idx, tr in enumerate(rows):
             row_data = {
                 'height': self.emu_to_layout_px(int(tr.get('h', 0))),
                 'cells': []
             }
 
-            for tc in tr.findall('.//a:tc', self.ns):
-                cell_text, cell_anchor, cell_padding, cell_props = self.extract_text_with_formatting(tc, zip_ref, slide_rels_path)
+            for col_idx, tc in enumerate(tr.findall('.//a:tc', self.ns)):
+                cell_text, cell_anchor, _, cell_props = self.extract_text_with_formatting(tc, zip_ref, slide_rels_path)
+                tc_pr = tc.find('a:tcPr', self.ns)
+
+                styled = (
+                    self._resolve_table_cell_style(style_elem, flags, row_idx, col_idx, row_count, col_count)
+                    if style_elem is not None else None
+                )
+
+                if styled is not None:
+                    borders = dict(styled['borders'])
+                    borders.update(self.extract_cell_borders(tc))
+                    fill = self.extract_cell_fill(tc)
+                    if fill['type'] == 'none' and styled['fill'] is not None:
+                        fill = styled['fill']
+                    self._apply_table_text_style(cell_text, styled)
+                else:
+                    borders = self.extract_cell_borders(tc, default_border=True)
+                    fill = self.extract_cell_fill(tc)
+
                 cell_data = {
                     'text': cell_text,
                     'text_anchor': cell_anchor,
-                    'text_padding': cell_padding,
+                    'text_padding': self.extract_cell_margins(tc_pr),
                     'text_props': cell_props,
-                    'fill': self.extract_cell_fill(tc),
-                    'borders': self.extract_cell_borders(tc),
+                    'fill': fill,
+                    'borders': borders,
                     'colspan': int(tc.get('gridSpan', 1)),
                     'rowspan': int(tc.get('rowSpan', 1)),
-                    'vertical_align': tc.get('anchor', 't')
+                    'vertical_align': tc_pr.get('anchor', 't') if tc_pr is not None else 't'
                 }
                 row_data['cells'].append(cell_data)
 
@@ -1335,6 +1655,165 @@ class EnhancedPPTXToHTMLV2:
 
         self.logger.increment_table()
         return table_data
+
+    @staticmethod
+    def _apply_table_text_style(paragraphs: List[Dict], styled: Dict) -> None:
+        """런에 지정이 없을 때만 테이블 스타일의 굵기/색을 적용"""
+        for para in paragraphs:
+            for run in para.get('runs', []):
+                fmt = run.get('formatting')
+                if not fmt:
+                    continue
+                if styled.get('bold') and not fmt.get('bold'):
+                    fmt['bold'] = True
+                if styled.get('color') and not fmt.get('explicit_color'):
+                    fmt['color'] = styled['color']
+
+    def _load_table_styles(self, zip_ref):
+        """ppt/tableStyles.xml의 스타일 정의 로드"""
+        try:
+            styles_xml = ET.fromstring(zip_ref.read('ppt/tableStyles.xml'))
+        except (KeyError, ET.ParseError):
+            return
+
+        for tbl_style in styles_xml.findall('.//a:tblStyle', self.ns):
+            style_id = tbl_style.get('styleId')
+            if style_id:
+                self.table_styles[style_id] = tbl_style
+
+    TABLE_BORDER_SIDES = (
+        ('left', 'a:left', 'a:insideV'),
+        ('right', 'a:right', 'a:insideV'),
+        ('top', 'a:top', 'a:insideH'),
+        ('bottom', 'a:bottom', 'a:insideH'),
+    )
+
+    def _table_style_parts(self, flags: Dict[str, bool], row_idx: int, col_idx: int,
+                           row_count: int, col_count: int) -> List[str]:
+        """셀에 적용할 테이블 스타일 파트를 우선순위가 낮은 순으로 반환"""
+        parts = ['wholeTbl']
+
+        if flags.get('bandRow'):
+            start = 1 if flags.get('firstRow') else 0
+            end = row_count - 1 if flags.get('lastRow') else row_count
+            if start <= row_idx < end:
+                parts.append('band1H' if (row_idx - start) % 2 == 0 else 'band2H')
+
+        if flags.get('bandCol'):
+            start = 1 if flags.get('firstCol') else 0
+            end = col_count - 1 if flags.get('lastCol') else col_count
+            if start <= col_idx < end:
+                parts.append('band1V' if (col_idx - start) % 2 == 0 else 'band2V')
+
+        if flags.get('firstCol') and col_idx == 0:
+            parts.append('firstCol')
+        if flags.get('lastCol') and col_idx == col_count - 1:
+            parts.append('lastCol')
+        if flags.get('firstRow') and row_idx == 0:
+            parts.append('firstRow')
+        if flags.get('lastRow') and row_idx == row_count - 1:
+            parts.append('lastRow')
+
+        return parts
+
+    def _table_border_from_ln(self, ln) -> Optional[Dict]:
+        """테이블 테두리 a:ln 을 CSS 값으로 변환"""
+        if ln is None:
+            return None
+
+        # 스타일의 a:left/a:top 등은 a:ln 을 감싸는 래퍼다
+        if self._strip_namespace(ln.tag) not in ('ln', 'lnL', 'lnR', 'lnT', 'lnB'):
+            ln = ln.find('a:ln', self.ns)
+            if ln is None:
+                return None
+
+        if ln.find('a:noFill', self.ns) is not None:
+            return {'width': 0.0, 'color': '#000000', 'style': 'solid'}
+
+        solid = ln.find('a:solidFill', self.ns)
+        if solid is None:
+            return None
+
+        dash = ln.find('a:prstDash', self.ns)
+        try:
+            width = self.emu_to_layout_px(int(ln.get('w', 12700)))
+        except ValueError:
+            width = 1.0
+
+        return {
+            'width': width,
+            'color': self.color_to_hex(solid),
+            'style': self._dash_to_css(dash.get('val', 'solid')) if dash is not None else 'solid'
+        }
+
+    def _resolve_table_cell_style(self, style_elem, flags: Dict[str, bool], row_idx: int,
+                                  col_idx: int, row_count: int, col_count: int) -> Dict:
+        """테이블 스타일 파트를 겹쳐 셀의 채우기/테두리/글꼴 결정"""
+        resolved: Dict = {'fill': None, 'borders': {}, 'bold': None, 'color': None}
+
+        for part_name in self._table_style_parts(flags, row_idx, col_idx, row_count, col_count):
+            part = style_elem.find(f'a:{part_name}', self.ns)
+            if part is None:
+                continue
+
+            tx_style = part.find('a:tcTxStyle', self.ns)
+            if tx_style is not None:
+                if tx_style.get('b') in ('on', '1'):
+                    resolved['bold'] = True
+                elif tx_style.get('b') in ('off', '0'):
+                    resolved['bold'] = False
+                text_color = self._resolve_color(tx_style, self.theme_colors)
+                if text_color:
+                    resolved['color'] = text_color
+
+            fill_elem = part.find('a:tcStyle/a:fill', self.ns)
+            if fill_elem is not None:
+                solid = fill_elem.find('a:solidFill', self.ns)
+                if solid is not None:
+                    resolved['fill'] = {'type': 'solid', 'color': self.color_to_hex(solid)}
+                elif fill_elem.find('a:noFill', self.ns) is not None:
+                    resolved['fill'] = {'type': 'none', 'color': '#FFFFFF'}
+
+            tc_bdr = part.find('a:tcStyle/a:tcBdr', self.ns)
+            if tc_bdr is None:
+                continue
+
+            for side, outer_tag, inner_tag in self.TABLE_BORDER_SIDES:
+                is_outer = {
+                    'left': col_idx == 0,
+                    'right': col_idx == col_count - 1,
+                    'top': row_idx == 0,
+                    'bottom': row_idx == row_count - 1
+                }[side]
+
+                if part_name == 'wholeTbl':
+                    ln = tc_bdr.find(outer_tag if is_outer else inner_tag, self.ns)
+                else:
+                    ln = tc_bdr.find(outer_tag, self.ns)
+                    if ln is None and not is_outer:
+                        ln = tc_bdr.find(inner_tag, self.ns)
+
+                border = self._table_border_from_ln(ln)
+                if border is not None:
+                    resolved['borders'][side] = border
+
+        return resolved
+
+    # bodyPr/tcPr 에 값이 없을 때 적용되는 OOXML 기본 안쪽 여백(EMU)
+    DEFAULT_TEXT_INSETS = {'left': 91440, 'right': 91440, 'top': 45720, 'bottom': 45720}
+
+    def extract_cell_margins(self, tc_pr) -> Dict[str, float]:
+        """테이블 셀 안쪽 여백 추출"""
+        attrs = {'left': 'marL', 'right': 'marR', 'top': 'marT', 'bottom': 'marB'}
+        margins = {}
+        for side, attr in attrs.items():
+            value = tc_pr.get(attr) if tc_pr is not None else None
+            try:
+                emu = int(value) if value is not None else self.DEFAULT_TEXT_INSETS[side]
+            except ValueError:
+                emu = self.DEFAULT_TEXT_INSETS[side]
+            margins[side] = self.emu_to_layout_px(emu)
+        return margins
 
     def extract_cell_fill(self, tc) -> Dict:
         """테이블 셀 채우기 색상 추출"""
@@ -1351,8 +1830,8 @@ class EnhancedPPTXToHTMLV2:
 
         return {'type': 'none', 'color': '#FFFFFF'}
 
-    def extract_cell_borders(self, tc) -> Dict:
-        """테이블 셀 테두리 추출"""
+    def extract_cell_borders(self, tc, default_border: bool = False) -> Dict:
+        """테이블 셀에 명시된 테두리 추출"""
         tc_pr = tc.find('.//a:tcPr', self.ns)
         borders = {}
 
@@ -1365,20 +1844,12 @@ class EnhancedPPTXToHTMLV2:
             }
 
             for side_name, side_tag in border_sides.items():
-                ln = tc_pr.find(f'.//{side_tag}', self.ns)
-                if ln is not None:
-                    width = int(ln.get('w', 12700))
-                    borders[side_name] = {
-                        'width': max(1, self.emu_to_layout_px(width)),
-                        'color': self.color_to_hex(ln.find('.//a:solidFill', self.ns)),
-                        'style': 'solid'
-                    }
-                else:
-                    borders[side_name] = {
-                        'width': 1,
-                        'color': '#000000',
-                        'style': 'solid'
-                    }
+                ln = tc_pr.find(side_tag, self.ns)
+                border = self._table_border_from_ln(ln)
+                if border is not None:
+                    borders[side_name] = border
+                elif default_border:
+                    borders[side_name] = {'width': 1.0, 'color': '#000000', 'style': 'solid'}
 
         return borders
 
@@ -1572,22 +2043,32 @@ class EnhancedPPTXToHTMLV2:
         """도형 처리 (커스텀 지오메트리, 그림자, 반사 효과 포함)"""
         transform_chain = transform_chain or []
         sp_pr = shape.find('.//p:spPr', self.ns)
+        if sp_pr is None:
+            sp_pr = shape.find('.//dsp:spPr', self.ns)
 
         shape_id = None
         c_nv_pr = None
         nv_sp_pr = shape.find('.//p:nvSpPr', self.ns)
+        if nv_sp_pr is None:
+            nv_sp_pr = shape.find('.//dsp:nvSpPr', self.ns)
         if nv_sp_pr is not None:
             c_nv_pr = nv_sp_pr.find('.//p:cNvPr', self.ns)
+            if c_nv_pr is None:
+                c_nv_pr = nv_sp_pr.find('.//dsp:cNvPr', self.ns)
             if c_nv_pr is not None:
                 shape_id = c_nv_pr.get('id')
 
         paragraphs, text_anchor, text_padding, text_props = self.extract_text_with_formatting(shape, zip_ref, slide_rels_path)
 
+        style_elem = shape.find('.//p:style', self.ns)
+        if style_elem is None:
+            style_elem = shape.find('.//dsp:style', self.ns)
+
         shape_data = {
             'type': 'shape',
             'position': self.extract_shape_position(sp_pr),
-            'fill': self.extract_shape_fill(sp_pr),
-            'border': self.extract_shape_border(sp_pr),
+            'fill': self.extract_shape_fill(sp_pr, style_elem),
+            'border': self.extract_shape_border(sp_pr, style_elem),
             'paragraphs': paragraphs,
             'text_anchor': text_anchor,
             'text_padding': text_padding,
@@ -1607,6 +2088,11 @@ class EnhancedPPTXToHTMLV2:
         if shape_data['position'].get('rotation') is None:
             shape_data['position']['rotation'] = 0.0
         shape_data['position'] = self._align_position_to_pivot(shape_data['position'])
+
+        if self._strip_namespace(shape.tag) == 'cxnSp':
+            shape_data['connector'] = self._extract_connector(sp_pr)
+
+        shape_data['text_transform'] = self._diagram_text_transform(shape, sp_pr)
 
         # Phase 2: 커스텀 지오메트리 추출
         if sp_pr is not None:
@@ -1639,7 +2125,7 @@ class EnhancedPPTXToHTMLV2:
         if pic is not None:
             blip = pic.find('.//a:blip', self.ns)
             if blip is not None:
-                embed = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
+                embed = self._blip_embed_id(blip)
                 if embed:
                     media = self.extract_media(zip_ref, slide_rels_path, embed, slide_num)
                     if media:
@@ -1676,6 +2162,10 @@ class EnhancedPPTXToHTMLV2:
 
         try:
             self.theme_colors = self._default_theme_colors()
+            self.theme_fonts = self._default_theme_fonts()
+            self.theme_line_widths = []
+            self.font_stacks = {}
+            self.table_styles = {}
             self.theme_background_fills = []
             self.layout_background_cache.clear()
             self.master_background_cache.clear()
@@ -1690,6 +2180,7 @@ class EnhancedPPTXToHTMLV2:
                 animation_handler = AnimationHandler(self.ns, self.logger)
                 font_manager = FontManager(zip_ref, self.output_dir, self.logger)
                 self._load_theme(zip_ref)
+                self._load_table_styles(zip_ref)
 
                 # 슬라이드 크기 가져오기
                 try:
@@ -1833,9 +2324,14 @@ class EnhancedPPTXToHTMLV2:
             element['position']['rotation'] = 0.0
         element['position'] = self._ensure_position_defaults(element['position'])
 
+        blip_fill = pic.find('.//p:blipFill', self.ns)
+        if blip_fill is not None:
+            element['image_crop'] = self._extract_source_crop(blip_fill)
+            element['image_stretch'] = blip_fill.find('a:stretch', self.ns) is not None
+
         blip = pic.find('.//a:blip', self.ns)
         if blip is not None:
-            embed = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
+            embed = self._blip_embed_id(blip)
             if embed:
                 media = self.extract_media(zip_ref, slide_rels_path, embed, idx)
                 if media:
@@ -1857,7 +2353,7 @@ class EnhancedPPTXToHTMLV2:
 
     def _process_graphic_frame(self, graphic_frame, zip_ref, slide_rels_path, idx,
                                placeholder_context: Dict[str, Dict],
-                               chart_extractor, smartart_parser,
+                               chart_extractor, shape_converter, smartart_parser, animation_handler,
                                transform_chain: Optional[List[Dict]], elements: List[Dict]):
         """그래픽 프레임 처리 (차트, 테이블, SmartArt)"""
         transform_chain = transform_chain or []
@@ -1904,6 +2400,12 @@ class EnhancedPPTXToHTMLV2:
             return
 
         # SmartArt 처리
+        graphic_data = graphic_frame.find('.//a:graphicData', self.ns)
+        if graphic_data is not None and (graphic_data.get('uri') or '').endswith('/diagram'):
+            self._process_diagram(graphic_frame, zip_ref, slide_rels_path, idx, placeholder_context,
+                                  shape_converter, animation_handler, transform_chain, elements)
+            return
+
         smartart_data = smartart_parser.extract_smartart_text(graphic_frame, slide_rels_path)
         if smartart_data:
             xfrm = graphic_frame.find('.//p:xfrm', self.ns)
@@ -1919,6 +2421,93 @@ class EnhancedPPTXToHTMLV2:
             smartart_data['position'] = position
             smartart_data['z_index'] = self._next_z_index()
             elements.append(smartart_data)
+
+    def _process_diagram(self, graphic_frame, zip_ref, slide_rels_path, idx,
+                         placeholder_context: Dict[str, Dict],
+                         shape_converter, animation_handler,
+                         transform_chain: Optional[List[Dict]], elements: List[Dict]):
+        """SmartArt를 미리 배치된 drawing 파트의 도형으로 렌더링"""
+        transform_chain = transform_chain or []
+
+        drawing_path = self._resolve_diagram_drawing_path(graphic_frame, zip_ref, slide_rels_path)
+        if not drawing_path:
+            self.logger.warning(f"SmartArt drawing part not found on slide {idx}")
+            return
+
+        try:
+            drawing_xml = ET.fromstring(zip_ref.read(drawing_path))
+        except (KeyError, ET.ParseError) as exc:
+            self.logger.warning(f"Failed to read SmartArt drawing {drawing_path}: {exc}")
+            return
+
+        frame_position = self.extract_shape_position(graphic_frame.find('.//p:xfrm', self.ns))
+        frame_position = self._apply_placeholder_inheritance(graphic_frame, frame_position, placeholder_context)
+        frame_position = self._ensure_position_defaults(frame_position)
+
+        # drawing 좌표는 프레임 원점 기준이므로 프레임 위치만큼 평행이동
+        frame_transform = {
+            'offset_x': frame_position['x'],
+            'offset_y': frame_position['y'],
+            'origin_x': 0.0,
+            'origin_y': 0.0,
+            'scale_x': 1.0,
+            'scale_y': 1.0,
+            'rotation': 0.0
+        }
+        chain = list(transform_chain) + [frame_transform]
+
+        # 다이어그램 도형의 blip은 슬라이드가 아니라 drawing 파트의 관계를 참조한다
+        drawing_rels_path = drawing_path.replace('diagrams/', 'diagrams/_rels/') + '.rels'
+        try:
+            zip_ref.getinfo(drawing_rels_path)
+        except KeyError:
+            drawing_rels_path = slide_rels_path
+
+        shape_count = 0
+        for sp in drawing_xml.findall('.//dsp:spTree/dsp:sp', self.ns):
+            try:
+                elements.append(
+                    self.process_shape(sp, zip_ref, drawing_rels_path, idx,
+                                       shape_converter, animation_handler,
+                                       {}, transform_chain=chain)
+                )
+                shape_count += 1
+            except Exception as exc:
+                self.logger.warning(f"SmartArt shape skipped on slide {idx}: {exc}")
+
+        if shape_count:
+            self.logger.increment_smartart()
+            self.logger.debug(f"Rendered SmartArt with {shape_count} shapes from {drawing_path}")
+
+    def _resolve_diagram_drawing_path(self, graphic_frame, zip_ref, slide_rels_path) -> Optional[str]:
+        """dgm:relIds → 데이터 파트 → dsp:dataModelExt 순으로 drawing 파트 경로 해결"""
+        rel_ids = graphic_frame.find(
+            './/{http://schemas.openxmlformats.org/drawingml/2006/diagram}relIds')
+        if rel_ids is None:
+            return None
+
+        data_rel_id = rel_ids.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}dm')
+        if not data_rel_id:
+            return None
+
+        data_target, _ = self.resolve_relationship(zip_ref, slide_rels_path, data_rel_id)
+        if not data_target:
+            return None
+
+        try:
+            data_xml = ET.fromstring(zip_ref.read(f"ppt/{data_target.replace('..', '').lstrip('/')}"))
+        except (KeyError, ET.ParseError):
+            return None
+
+        model_ext = data_xml.find('.//dsp:dataModelExt', self.ns)
+        if model_ext is None or not model_ext.get('relId'):
+            return None
+
+        drawing_target, _ = self.resolve_relationship(zip_ref, slide_rels_path, model_ext.get('relId'))
+        if not drawing_target:
+            return None
+
+        return f"ppt/{drawing_target.replace('..', '').lstrip('/')}"
 
     def _process_group(self, grp_sp, zip_ref, slide_rels_path, idx, placeholder_context: Dict[str, Dict],
                        chart_extractor, shape_converter, smartart_parser,
@@ -1953,8 +2542,8 @@ class EnhancedPPTXToHTMLV2:
                                       placeholder_context, new_chain, elements)
             elif tag == 'graphicFrame':
                 self._process_graphic_frame(child, zip_ref, slide_rels_path, idx,
-                                            placeholder_context, chart_extractor,
-                                            smartart_parser, new_chain, elements)
+                                            placeholder_context, chart_extractor, shape_converter,
+                                            smartart_parser, animation_handler, new_chain, elements)
             elif tag == 'grpSp':
                 self._process_group(child, zip_ref, slide_rels_path, idx,
                                     placeholder_context, chart_extractor, shape_converter, smartart_parser,
@@ -1987,8 +2576,8 @@ class EnhancedPPTXToHTMLV2:
                                       placeholder_context, transform_chain, elements)
             elif tag == 'graphicFrame':
                 self._process_graphic_frame(child, zip_ref, slide_rels_path, idx,
-                                            placeholder_context, chart_extractor,
-                                            smartart_parser, transform_chain, elements)
+                                            placeholder_context, chart_extractor, shape_converter,
+                                            smartart_parser, animation_handler, transform_chain, elements)
             elif tag == 'grpSp':
                 self._process_group(child, zip_ref, slide_rels_path, idx,
                                     placeholder_context, chart_extractor, shape_converter, smartart_parser,
@@ -2402,6 +2991,7 @@ class EnhancedPPTXToHTMLV2:
 :root {{
     --slide-width: {slide_width:.2f}px;
     --slide-height: {slide_height:.2f}px;
+{chr(10).join(f'    --font-{slug}: {stack};' for slug, stack in sorted(self.font_stacks.items()))}
 }}
 
 * {{
@@ -2440,7 +3030,8 @@ body {{
     width: var(--slide-width);
     height: var(--slide-height);
     position: relative;
-    transform-origin: top left;
+    flex: 0 0 auto;
+    transform-origin: center center;
 }}
 
 .slide {{
@@ -2472,6 +3063,33 @@ body {{
 .ppt-element {{
     position: absolute;
     overflow: visible;
+}}
+
+.ppt-shape {{
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}}
+
+.ppt-shape path {{
+    vector-effect: non-scaling-stroke;
+}}
+
+.ppt-text-block {{
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: visible;
+}}
+
+.ppt-text-inner {{
+    width: 100%;
+    flex: 0 0 auto;
+    white-space: normal;
 }}
 
 .ppt-link {{
@@ -2604,6 +3222,29 @@ body {{
         }});
     }}
 
+    function slideFromUrl() {{
+        const requested = parseInt(new URLSearchParams(window.location.search).get('slide'), 10);
+        if (Number.isNaN(requested)) {{
+            return 0;
+        }}
+        return Math.min(totalSlides, Math.max(1, requested)) - 1;
+    }}
+
+    function syncUrl(replace) {{
+        const url = new URL(window.location.href);
+        url.searchParams.set('slide', String(currentSlide + 1));
+        const state = {{ slide: currentSlide }};
+        try {{
+            if (replace) {{
+                history.replaceState(state, '', url);
+            }} else {{
+                history.pushState(state, '', url);
+            }}
+        }} catch (error) {{
+            // file:// 로 열면 origin 이 null 이라 history API 가 거부한다
+        }}
+    }}
+
     function showSlide(index) {{
         if (index < 0 || index >= totalSlides || index === currentSlide) {{
             return;
@@ -2613,6 +3254,7 @@ body {{
         slides[currentSlide].classList.add('active');
         updateControls();
         initializeCharts();
+        syncUrl(false);
     }}
 
     if (prevBtn) {{
@@ -2634,11 +3276,25 @@ body {{
 
     window.addEventListener('resize', () => requestAnimationFrame(applyScale));
 
+    window.addEventListener('popstate', () => {{
+        const target = slideFromUrl();
+        if (target === currentSlide) {{
+            return;
+        }}
+        slides[currentSlide].classList.remove('active');
+        currentSlide = target;
+        slides[currentSlide].classList.add('active');
+        updateControls();
+        initializeCharts();
+    }});
+
     window.addEventListener('load', () => {{
-        slides.forEach((slide, idx) => slide.classList.toggle('active', idx === 0));
+        currentSlide = slideFromUrl();
+        slides.forEach((slide, idx) => slide.classList.toggle('active', idx === currentSlide));
         updateControls();
         applyScale();
         initializeCharts();
+        syncUrl(true);
     }});
 
     window.showSlide = showSlide;
@@ -2662,7 +3318,7 @@ body {{
         <div class="progress-bar" id="progress"></div>
         <div class="stage-wrapper">
             <div class="slide-stage">
-                {''.join(slides_markup)}
+                {(chr(10) + ' ' * 16).join(slides_markup)}
             </div>
         </div>
         <div class="controls">
@@ -2694,6 +3350,10 @@ body {{
         transforms = []
         if pos.get('rotation'):
             transforms.append(f"rotate({pos['rotation']:.3f}deg)")
+        if pos.get('flip_h'):
+            transforms.append("scaleX(-1)")
+        if pos.get('flip_v'):
+            transforms.append("scaleY(-1)")
         if transforms:
             styles.append(f"transform: {' '.join(transforms)}")
 
@@ -2716,14 +3376,26 @@ body {{
             styles.append(element['reflection'])
 
         has_custom_geometry = bool(element.get('custom_geometry'))
+        is_connector = bool(element.get('connector'))
         svg_fragment = ''
-        if has_custom_geometry:
+        if is_connector:
+            styles.append("background-color: transparent")
+            svg_fragment = self._build_connector_svg(element)
+        elif has_custom_geometry:
             styles.append("background-color: transparent")
             shape_converter = ShapeGeometryConverter(self.ns, self.logger)
+            clipped_image = None
+            if element.get('image'):
+                clipped_image = {
+                    'href': element['image'],
+                    'crop': element.get('image_crop'),
+                    'clip_id': f"clip{element.get('z_index', 0)}"
+                }
             svg_fragment = shape_converter._build_svg_fragment(
                 element['custom_geometry'],
                 element.get('fill', {}),
-                element.get('border', {})
+                element.get('border', {}),
+                image=clipped_image
             )
         else:
             fill = element.get('fill', {'type': 'none'})
@@ -2735,8 +3407,17 @@ body {{
                 styles.append("background-color: transparent")
 
         border = element.get('border', {'width': 0})
-        if border['width'] > 0:
-            styles.append(f"border: {border['width']:.2f}px {border.get('style', 'solid')} {border.get('color', '#000000')}")
+        # SVG 경로가 이미 윤곽을 그리므로 사각형 CSS 테두리를 중복 적용하지 않는다
+        if border['width'] > 0 and not has_custom_geometry and not is_connector:
+            # 선처럼 한쪽 치수가 테두리보다 얇은 도형은 변 하나만 그린다
+            edge = 'border'
+            if pos.get('height', 0.0) < border['width']:
+                edge = 'border-top'
+            elif pos.get('width', 0.0) < border['width']:
+                edge = 'border-left'
+            styles.append(
+                f"{edge}: {border['width']:.2f}px {border.get('style', 'solid')} {border.get('color', '#000000')}"
+            )
 
         content = []
 
@@ -2753,22 +3434,31 @@ body {{
                 <source src="{element['audio']}">
                 Your browser does not support the audio tag.
             </audio>''')
-        elif element.get('image'):
-            image_styles = ["width: 100%", "height: 100%"]
+        elif element.get('image') and not has_custom_geometry:
             crop = element.get('image_crop') or {}
-            stretch = element.get('image_stretch')
             if crop:
-                top = crop.get('t', 0) * 100
-                right = crop.get('r', 0) * 100
-                bottom = crop.get('b', 0) * 100
-                left = crop.get('l', 0) * 100
-                image_styles.append("object-fit: cover")
-                image_styles.append(f"clip-path: inset({top:.2f}% {right:.2f}% {bottom:.2f}% {left:.2f}%)")
-            elif stretch:
-                image_styles.append("object-fit: fill")
+                left = crop.get('l', 0.0)
+                top = crop.get('t', 0.0)
+                visible_width = max(0.0001, 1.0 - left - crop.get('r', 0.0))
+                visible_height = max(0.0001, 1.0 - top - crop.get('b', 0.0))
+                # srcRect은 잘라낸 영역만 도형 크기에 맞춰 늘리므로 확대 후 오프셋으로 재현
+                image_styles = [
+                    "position: absolute",
+                    f"width: {100 / visible_width:.4f}%",
+                    f"height: {100 / visible_height:.4f}%",
+                    f"left: {-left / visible_width * 100:.4f}%",
+                    f"top: {-top / visible_height * 100:.4f}%",
+                    "object-fit: fill"
+                ]
+                content.append(
+                    f'<span style="position: absolute; inset: 0; display: block; overflow: hidden">'
+                    f'<img src="{element["image"]}" style="{"; ".join(image_styles)}">'
+                    f'</span>'
+                )
             else:
-                image_styles.append("object-fit: contain")
-            content.append(f'<img src="{element["image"]}" style="{"; ".join(image_styles)}">')
+                image_styles = ["width: 100%", "height: 100%"]
+                image_styles.append("object-fit: fill" if element.get('image_stretch') else "object-fit: contain")
+                content.append(f'<img src="{element["image"]}" style="{"; ".join(image_styles)}">')
 
         text_props = element.get('text_props') or {}
         wrap_text = text_props.get('wrap_text', True)
@@ -2780,36 +3470,37 @@ body {{
             pad_right = padding.get('right', 0.0)
             pad_bottom = padding.get('bottom', 0.0)
             pad_left = padding.get('left', 0.0)
-            available_height = max(0.0, pos.get('height', 0.0) - (pad_top + pad_bottom))
-            estimated_height = text_props.get('estimated_height')
-            vertical_offset = 0.0
-            if estimated_height and estimated_height > 0 and available_height > 0:
-                extra_space = max(0.0, available_height - estimated_height)
-                if anchor == 'ctr':
-                    vertical_offset = extra_space / 2.0
-                elif anchor == 'b':
-                    vertical_offset = extra_space
 
-            wrapper_styles = [
-                "position: relative",
-                "display: block",
-                "height: 100%",
-                f"padding: {pad_top:.2f}px {pad_right:.2f}px {pad_bottom:.2f}px {pad_left:.2f}px",
-                "overflow: visible"
-            ]
+            # 세로 정렬과 안쪽 여백만 도형마다 다르다
+            wrapper_styles = []
+            if anchor in ('ctr', 'b'):
+                wrapper_styles.append(f"justify-content: {'center' if anchor == 'ctr' else 'flex-end'}")
+            if pad_top or pad_right or pad_bottom or pad_left:
+                wrapper_styles.append(
+                    f"padding: {pad_top:.2f}px {pad_right:.2f}px {pad_bottom:.2f}px {pad_left:.2f}px"
+                )
+            text_transform = element.get('text_transform')
+            if text_transform:
+                text_width = pos.get('width', 0.0) * text_transform['width_ratio']
+                text_height = pos.get('height', 0.0) * text_transform['height_ratio']
+                wrapper_styles.extend([
+                    "position: absolute",
+                    "left: 50%",
+                    "top: 50%",
+                    f"width: {text_width:.2f}px",
+                    f"height: {text_height:.2f}px",
+                    f"transform: translate(-50%, -50%) rotate({text_transform['rotation']:.3f}deg)",
+                ])
 
-            inner_styles = ["width: 100%"]
-            if vertical_offset:
-                inner_styles.append(f"margin-top: {vertical_offset:.2f}px")
+            inner_styles = []
             if not wrap_text:
                 inner_styles.extend(["white-space: nowrap", "overflow: visible", "width: fit-content"])
-            else:
-                inner_styles.append("white-space: normal")
 
-            inner_block = (
-                f'<div class="ppt-text-inner" style="{"; ".join(inner_styles)}">{paragraphs_html}</div>'
-            )
-            content.append(f'<div class="ppt-text-block" style="{"; ".join(wrapper_styles)}">{inner_block}</div>')
+            inner_attr = f' style="{"; ".join(inner_styles)}"' if inner_styles else ''
+            wrapper_attr = f' style="{"; ".join(wrapper_styles)}"' if wrapper_styles else ''
+
+            inner_block = f'<div class="ppt-text-inner"{inner_attr}>{paragraphs_html}</div>'
+            content.append(f'<div class="ppt-text-block"{wrapper_attr}>{inner_block}</div>')
 
         shape_html = f'<div class="ppt-element" data-shape-id="{element.get("shape_id", "")}" style="{"; ".join(styles)}">{"".join(content)}</div>'
         if element.get('hyperlink'):
@@ -2851,6 +3542,8 @@ body {{
 
                 if cell['borders']:
                     for side, border in cell['borders'].items():
+                        if border['width'] <= 0:
+                            continue
                         cell_styles.append(f"border-{side}: {border['width']:.2f}px {border['style']} {border['color']}")
 
                 v_align_map = {'t': 'top', 'ctr': 'middle', 'b': 'bottom'}
@@ -2883,6 +3576,143 @@ body {{
             f'{"".join(rows_html)}'
             f'</table>'
         )
+
+    # Office 전용 폰트(Aptos 등)는 시스템에 없을 수 있으므로 유사 폰트로 대체
+    FONT_ALIASES = {
+        'aptos display': ['Aptos', 'Segoe UI Variable Display', 'Segoe UI'],
+        'aptos': ['Segoe UI Variable Text', 'Segoe UI'],
+        'aptos narrow': ['Aptos', 'Segoe UI'],
+        'aptos serif': ['Georgia'],
+        'aptos mono': ['Consolas'],
+        'calibri': ['Carlito', 'Segoe UI'],
+        'calibri light': ['Calibri', 'Carlito', 'Segoe UI'],
+        'cambria': ['Caladea', 'Georgia'],
+    }
+
+    SERIF_HINTS = ('serif', 'times', 'georgia', 'garamond', 'cambria', 'palatino',
+                   'book antiqua', 'batang', 'myeongjo', 'song', 'ming')
+    MONOSPACE_HINTS = ('mono', 'courier', 'consolas', 'menlo')
+
+    def _shape_style_font_color(self, shape) -> Optional[str]:
+        """p:style / dsp:style 의 fontRef 색상 (런에 색 지정이 없을 때 적용)"""
+        font_ref = shape.find('.//p:style/a:fontRef', self.ns)
+        if font_ref is None:
+            font_ref = shape.find('.//dsp:style/a:fontRef', self.ns)
+        if font_ref is None:
+            return None
+        return self._resolve_color(font_ref, self.theme_colors)
+
+    def _shape_default_typeface(self, shape) -> str:
+        """런에 폰트 지정이 없을 때 사용할 테마 폰트 결정"""
+        font_ref = shape.find('.//p:style/a:fontRef', self.ns)
+        if font_ref is None:
+            font_ref = shape.find('.//dsp:style/a:fontRef', self.ns)
+        if font_ref is not None and font_ref.get('idx') == 'major':
+            return self.theme_fonts.get('major', 'Calibri Light')
+
+        ph = shape.find('.//p:nvSpPr/p:nvPr/p:ph', self.ns)
+        if ph is not None and ph.get('type') in {'title', 'ctrTitle'}:
+            return self.theme_fonts.get('major', 'Calibri Light')
+
+        return self.theme_fonts.get('minor', 'Calibri')
+
+    def _resolve_percent_spacing(self, paragraph_info: Dict, runs: List[Dict]) -> None:
+        """spcPct 값을 문단 최대 글자 크기 기준 픽셀로 변환"""
+        if paragraph_info.get('space_before_pct') is None and paragraph_info.get('space_after_pct') is None:
+            return
+
+        max_pt = 0.0
+        for run in runs:
+            if run.get('is_break'):
+                continue
+            try:
+                max_pt = max(max_pt, float(run.get('formatting', {}).get('font_size', 18)))
+            except (TypeError, ValueError):
+                continue
+        base_px = self._pt_to_px(max_pt or 18.0)
+
+        if paragraph_info.get('space_before_pct') is not None:
+            paragraph_info['space_before'] = base_px * paragraph_info['space_before_pct']
+        if paragraph_info.get('space_after_pct') is not None:
+            paragraph_info['space_after'] = base_px * paragraph_info['space_after_pct']
+
+    def _end_para_font_size(self, para_elem) -> float:
+        """빈 문단의 줄 높이를 결정하는 endParaRPr 글자 크기 (pt)"""
+        end_rpr = para_elem.find('a:endParaRPr', self.ns)
+        if end_rpr is not None and end_rpr.get('sz'):
+            try:
+                return int(end_rpr.get('sz')) / 100
+            except ValueError:
+                pass
+        return 18.0
+
+    def _blip_embed_id(self, blip) -> Optional[str]:
+        """blip의 관계 ID (래스터가 없는 아이콘은 svgBlip 확장을 사용)"""
+        if blip is None:
+            return None
+
+        embed = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
+        if embed:
+            return embed
+
+        svg_blip = blip.find(
+            './/{http://schemas.microsoft.com/office/drawing/2016/SVG/main}svgBlip')
+        if svg_blip is not None:
+            return svg_blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
+
+        return None
+
+    def _extract_source_crop(self, blip_fill) -> Dict[str, float]:
+        """a:srcRect의 크롭 비율 추출 (1/100000 단위 → 0~1 비율)"""
+        crop: Dict[str, float] = {}
+        src_rect = blip_fill.find('a:srcRect', self.ns)
+        if src_rect is None:
+            return crop
+
+        for attr in ('l', 'r', 't', 'b'):
+            raw = src_rect.get(attr)
+            if raw is None:
+                continue
+            try:
+                value = int(raw) / 100000
+            except ValueError:
+                continue
+            if value:
+                crop[attr] = value
+        return crop
+
+    @classmethod
+    def _build_font_stack(cls, font_family: Optional[str]) -> str:
+        """폰트 이름을 CSS 폴백 스택으로 변환"""
+        name = (font_family or 'Arial').strip()
+        if not name:
+            name = 'Arial'
+
+        lowered = name.lower()
+        if any(hint in lowered for hint in cls.MONOSPACE_HINTS):
+            generic = ['Courier New', 'monospace']
+        elif any(hint in lowered for hint in cls.SERIF_HINTS):
+            generic = ['Georgia', 'Times New Roman', 'serif']
+        else:
+            generic = ['Segoe UI', 'Helvetica Neue', 'Arial', 'sans-serif']
+
+        stack: List[str] = []
+        for candidate in [name] + cls.FONT_ALIASES.get(lowered, []) + generic:
+            if candidate.lower() not in {existing.lower() for existing in stack}:
+                stack.append(candidate)
+
+        return ', '.join(
+            family if family in ('serif', 'sans-serif', 'monospace')
+            else f"'{family}'"
+            for family in stack
+        )
+
+    def _font_stack(self, font_family: Optional[str]) -> str:
+        """폴백 스택은 변환기가 만든 것이므로 변수로 한 번만 정의한다"""
+        name = (font_family or 'Arial').strip() or 'Arial'
+        slug = re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-') or 'font'
+        self.font_stacks.setdefault(slug, self._build_font_stack(name))
+        return f"var(--font-{slug})"
 
     @staticmethod
     def _escape_html(text):

@@ -35,7 +35,6 @@ class FontManager:
         }
 
         self.fonts_dir = self.output_dir / "fonts"
-        self.fonts_dir.mkdir(exist_ok=True)
 
     def extract_embedded_fonts(self) -> List[str]:
         """
@@ -154,6 +153,7 @@ class FontManager:
             family_name = self._extract_font_family(tt_font) or typeface
 
             safe_name = self._slugify(f"{family_name}-{variant}")
+            self.fonts_dir.mkdir(parents=True, exist_ok=True)
             output_path = self.fonts_dir / f"{safe_name}.woff"
 
             tt_font.flavor = 'woff'

@@ -24,6 +24,7 @@ output/
 
 
 # Virtual Environment
+.venv/
 venv/
 ENV/
 env/
@@ -56,3 +57,4 @@ scripts.zip
 
 # Local settings (optional - currently included)
 # .claude/settings.local.json
+.playwright-mcp/
