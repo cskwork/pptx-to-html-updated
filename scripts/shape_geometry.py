@@ -47,7 +47,19 @@ class ShapeGeometryConverter:
             'flowChartData': self._create_parallelogram,
             'flowChartTerminator': self._create_terminator,
             'flowChartDocument': self._create_document,
+            'flowChartManualOperation': self._create_manual_operation,
+            'homePlate': self._create_home_plate,
+            'smileyFace': self._create_smiley_face,
+            'round2SameRect': self._create_round2_same_rect,
         }
+
+        # avLst 조정값이 모양을 크게 바꾸는 프리셋
+        self.adjustable_presets = {
+            'chevron': self._create_chevron,
+        }
+
+        # 눈/입을 구멍으로 뚫어야 하는 프리셋
+        self.evenodd_presets = {'smileyFace'}
 
     def extract_custom_geometry(self, sp_pr: ET.Element) -> Optional[Dict[str, object]]:
         """
@@ -74,17 +86,51 @@ class ShapeGeometryConverter:
         prst_geom = sp_pr.find('.//a:prstGeom', self.ns)
         if prst_geom is not None:
             preset_type = prst_geom.get('prst')
-            if preset_type in self.preset_shapes:
-                svg_geom = {
-                    'path': self.preset_shapes[preset_type](),
-                    'view_box': (0.0, 0.0, 100.0, 100.0)
-                }
-                if svg_geom and self.logger:
-                    self.logger.increment_custom_shape()
-                    self.logger.debug(f"Converted preset shape: {preset_type}")
-                return svg_geom
+            adjustable = self.adjustable_presets.get(preset_type)
+            if adjustable is not None:
+                width, height = self._shape_extent(sp_pr)
+                path = adjustable(self._parse_adjust_values(prst_geom), width, height)
+            elif preset_type in self.preset_shapes:
+                path = self.preset_shapes[preset_type]()
+            else:
+                return None
+
+            svg_geom = {
+                'path': path,
+                'view_box': (0.0, 0.0, 100.0, 100.0)
+            }
+            if preset_type in self.evenodd_presets:
+                svg_geom['fill_rule'] = 'evenodd'
+            if self.logger:
+                self.logger.increment_custom_shape()
+                self.logger.debug(f"Converted preset shape: {preset_type}")
+            return svg_geom
 
         return None
+
+    def _parse_adjust_values(self, prst_geom: ET.Element) -> Dict[str, float]:
+        """avLst의 조정값 파싱"""
+        values: Dict[str, float] = {}
+        for gd in prst_geom.findall('.//a:avLst/a:gd', self.ns):
+            name = gd.get('name')
+            fmla = gd.get('fmla', '')
+            if not name or not fmla.startswith('val '):
+                continue
+            try:
+                values[name] = float(fmla[4:])
+            except ValueError:
+                continue
+        return values
+
+    def _shape_extent(self, sp_pr: ET.Element) -> Tuple[float, float]:
+        """도형 크기(EMU) 반환"""
+        ext = sp_pr.find('.//a:xfrm/a:ext', self.ns)
+        if ext is None:
+            return 1.0, 1.0
+        try:
+            return float(ext.get('cx', 1)) or 1.0, float(ext.get('cy', 1)) or 1.0
+        except ValueError:
+            return 1.0, 1.0
 
     def _parse_custom_geometry(self, cust_geom: ET.Element) -> Optional[Dict[str, object]]:
         """
@@ -278,14 +324,49 @@ class ShapeGeometryConverter:
         """문서 (플로우차트) SVG 경로"""
         return "M 0 0 L 100 0 L 100 85 Q 75 100 50 85 Q 25 70 0 85 Z"
 
-    def _build_svg_fragment(self, svg_geom, fill: Dict, border: Dict) -> str:
+    def _create_manual_operation(self) -> str:
+        """수작업 (플로우차트) SVG 경로"""
+        return "M 0 0 L 100 0 L 80 100 L 20 100 Z"
+
+    def _create_chevron(self, adjust: Dict[str, float], width: float, height: float) -> str:
+        """셔브론 화살표 SVG 경로 (adj 값이 꺾이는 깊이를 결정)"""
+        shortest = min(width, height) or 1.0
+        max_adj = 100000.0 * width / shortest
+        value = max(0.0, min(adjust.get('adj', 50000.0), max_adj))
+        inset = (shortest * value / 100000.0) / width * 100.0
+        return (
+            f"M 0 0 L {100 - inset:.3f} 0 L 100 50 L {100 - inset:.3f} 100 "
+            f"L 0 100 L {inset:.3f} 50 Z"
+        )
+
+    def _create_home_plate(self) -> str:
+        """오각형 화살표 배너 SVG 경로"""
+        return "M 0 0 L 75 0 L 100 50 L 75 100 L 0 100 Z"
+
+    def _create_smiley_face(self) -> str:
+        """웃는 얼굴 SVG 경로 (evenodd로 눈/입을 비운다)"""
+        return (
+            "M 50 0 A 50 50 0 1 1 50 100 A 50 50 0 1 1 50 0 Z "
+            "M 33 25 A 6 8 0 1 1 33 41 A 6 8 0 1 1 33 25 Z "
+            "M 67 25 A 6 8 0 1 1 67 41 A 6 8 0 1 1 67 25 Z "
+            "M 22 60 Q 50 90 78 60 Q 50 78 22 60 Z"
+        )
+
+    def _create_round2_same_rect(self) -> str:
+        """위쪽 모서리만 둥근 직사각형 SVG 경로"""
+        return "M 0 100 L 0 17 Q 0 0 17 0 L 83 0 Q 100 0 100 17 L 100 100 Z"
+
+    def _build_svg_fragment(self, svg_geom, fill: Dict, border: Dict,
+                            image: Optional[Dict] = None) -> str:
         """SVG 요소 생성"""
         if isinstance(svg_geom, dict):
             path_str = svg_geom.get('path', '')
             view_box = svg_geom.get('view_box', (0.0, 0.0, 100.0, 100.0))
+            fill_rule = svg_geom.get('fill_rule')
         else:
             path_str = svg_geom
             view_box = (0.0, 0.0, 100.0, 100.0)
+            fill_rule = None
 
         fill_attr = 'none'
         if fill.get('type') == 'solid':
@@ -296,11 +377,44 @@ class ShapeGeometryConverter:
         stroke = border.get('color', '#000000')
         stroke_width = border.get('width', 1)
 
+        fill_rule_attr = f' fill-rule="{fill_rule}"' if fill_rule else ''
+        image_markup = self._build_clipped_image(image, path_str, view_box) if image else ''
+
+        # 보이지도 않고 그림도 없는 도형은 SVG 자체를 생략
+        if not image_markup and fill_attr == 'none' and not float(stroke_width or 0):
+            return ''
+
         return (
-            f'<svg viewBox="{view_box[0]} {view_box[1]} {view_box[2]} {view_box[3]}" preserveAspectRatio="none" '
-            'xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: 100%;">'
-            f'<path d="{path_str}" fill="{fill_attr}" stroke="{stroke}" stroke-width="{stroke_width}" />'
-            '</svg>'
+            f'<svg class="ppt-shape" viewBox="{view_box[0]} {view_box[1]} {view_box[2]} {view_box[3]}" '
+            'preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">'
+            f'{image_markup}'
+            f'<path d="{path_str}" fill="{fill_attr}" stroke="{stroke}" stroke-width="{stroke_width}"'
+            f'{fill_rule_attr} /></svg>'
+        )
+
+    @staticmethod
+    def _build_clipped_image(image: Dict, path_str: str, view_box) -> str:
+        """도형 경로로 잘라낸 그림 채우기 생성"""
+        href = image.get('href')
+        clip_id = image.get('clip_id')
+        if not href or not clip_id:
+            return ''
+
+        crop = image.get('crop') or {}
+        left = crop.get('l', 0.0)
+        top = crop.get('t', 0.0)
+        visible_width = max(0.0001, 1.0 - left - crop.get('r', 0.0))
+        visible_height = max(0.0001, 1.0 - top - crop.get('b', 0.0))
+
+        vb_x, vb_y, vb_w, vb_h = view_box
+        img_w = vb_w / visible_width
+        img_h = vb_h / visible_height
+
+        return (
+            f'<defs><clipPath id="{clip_id}"><path d="{path_str}" /></clipPath></defs>'
+            f'<image href="{href}" x="{vb_x - left * img_w:.4f}" y="{vb_y - top * img_h:.4f}" '
+            f'width="{img_w:.4f}" height="{img_h:.4f}" preserveAspectRatio="none" '
+            f'clip-path="url(#{clip_id})" />'
         )
 
     def generate_svg_html(self, svg_geom, position: Dict, fill: Dict, border: Dict,
